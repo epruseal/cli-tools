@@ -1,5 +1,5 @@
-"""legalize-cli — API-first CLI for Korean laws and precedents."""
+"""legalize-cli — API-first CLI for Korean legal documents."""
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 __all__ = ["__version__"]

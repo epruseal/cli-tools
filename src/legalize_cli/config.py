@@ -22,6 +22,12 @@ LAWS_REPO: str = "legalize-kr"
 #: Repository holding Korean court precedents as Markdown + metadata.json.
 PRECEDENTS_REPO: str = "precedent-kr"
 
+#: Repository holding Korean administrative rules as Markdown.
+ADMRULES_REPO: str = "admrule-kr"
+
+#: Repository holding Korean local ordinances as Markdown.
+ORDINANCES_REPO: str = "ordinance-kr"
+
 #: Default branch used by both mirror repos.
 DEFAULT_BRANCH: str = "main"
 

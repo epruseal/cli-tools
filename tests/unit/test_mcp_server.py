@@ -24,6 +24,10 @@ def test_all_tools_registered():
         "search",
         "precedents_list",
         "precedents_get",
+        "admrules_list",
+        "admrules_get",
+        "ordinances_list",
+        "ordinances_get",
     }
     for name in expected:
         assert hasattr(mcp_server, name), f"tool '{name}' not found in mcp_server"

@@ -1,8 +1,8 @@
 # legalize-cli
 
-GitHub REST API로 한국 법령·판례를 조회하는 CLI — 클론 없이, 인증 없이 바로 사용.
+GitHub REST API로 한국 법령·판례·행정규칙·자치법규를 조회하는 CLI — 클론 없이, 인증 없이 바로 사용.
 
-[legalize-kr](https://github.com/legalize-kr) 미러에서 한국 법령 및 법원 판례를 직접 명령줄로 조회합니다. LLM/에이전트 소비(`--json` 지원)와 사람이 직접 탐색하는 용도 모두를 위해 설계되었습니다.
+[legalize-kr](https://github.com/legalize-kr) 미러에서 한국 법령, 법원 판례, 행정규칙, 자치법규를 직접 명령줄로 조회합니다. LLM/에이전트 소비(`--json` 지원)와 사람이 직접 탐색하는 용도 모두를 위해 설계되었습니다.
 
 ## 설치
 
@@ -36,6 +36,9 @@ legalize laws diff 민법 민법 --date-a 2015-01-01 --date-b 2024-01-01 --mode 
 
 # 법령에서 키워드 검색
 legalize search "부동산 점유취득시효" --in laws --json
+
+# 자치법규 조회
+legalize ordinances list --jurisdiction 서울특별시 --type 조례 --json
 ```
 
 ## GitHub 토큰 설정 (Rate Limit 해결)
@@ -160,9 +163,13 @@ pipx install 'legalize-cli[mcp]'
 | `laws_list` | 법령 목록 조회 (카테고리·페이지 필터) |
 | `laws_get` | 법령 전문 조회 (날짜 기준) |
 | `laws_article` | 특정 조문 조회 (제839조 등) |
-| `search` | 법령·판례 키워드 검색 |
+| `search` | 법령·판례·행정규칙·자치법규 키워드 검색 |
 | `precedents_list` | 판례 목록 조회 (법원·사건종류 필터) |
 | `precedents_get` | 판례 전문 조회 (사건번호·판례일련번호) |
+| `admrules_list` | 행정규칙 목록 조회 (종류·기관 필터) |
+| `admrules_get` | 행정규칙 전문 조회 |
+| `ordinances_list` | 자치법규 목록 조회 (종류·지자체 필터) |
+| `ordinances_get` | 자치법규 전문 조회 |
 
 ### Claude Desktop 설정
 
@@ -319,18 +326,32 @@ legalize precedents get <사건번호|path> [--json] [--legacy-map <path>]
 2. **레거시 파일명** (`{사건번호}.md`) fallback
 3. **`--legacy-map`** 지정 시 `legacy-paths.json` 매핑 테이블 최종 fallback
 
-### `search` — 키워드 검색
-
-법령 및/또는 판례 전체에서 키워드를 검색합니다.
+### `admrules list` / `admrules get` — 행정규칙 조회
 
 ```bash
-legalize search <키워드> [--in laws|precedents|all] [--strategy auto|code|tree|metadata] [--json]
+legalize admrules list [--type 고시|훈령|예규|공고|...] [--agency 기관명] [--page N] [--page-size N] [--json]
+legalize admrules get <행정규칙명|path> [--type X] [--agency 기관명] [--json]
+```
+
+### `ordinances list` / `ordinances get` — 자치법규 조회
+
+```bash
+legalize ordinances list [--type 조례|규칙|훈령|예규|고시|...] [--jurisdiction 광역] [--subdivision 기초|_본청|_교육청] [--json]
+legalize ordinances get <자치법규명|path> [--type X] [--jurisdiction 광역] [--subdivision 기초] [--json]
+```
+
+### `search` — 키워드 검색
+
+법령, 판례, 행정규칙, 자치법규 전체에서 키워드를 검색합니다.
+
+```bash
+legalize search <키워드> [--in laws|precedents|admrules|ordinances|all] [--strategy auto|code|tree|metadata] [--json]
 ```
 
 검색 전략:
 - `code`: GitHub 코드 검색 (토큰 필수, 가장 정확)
 - `tree`: 토큰 없이 경로명 매칭 (빠름)
-- `metadata`: 판례 인덱스 검색 (캐시 후 API 비용 0)
+- `metadata`: 기존 호환용 별칭이며 현재는 `tree`와 동일하게 처리
 - `auto`: 토큰 유무에 따라 자동 선택
 
 ### `cache info` / `cache clear` — 캐시 관리
@@ -426,7 +447,14 @@ legalize precedents list --court 대법원 --type 민사 --page-size 5 --json
 legalize precedents get "2022다12345" --json
 ```
 
-### 예시 9: CI/CD에서 사용 (GitHub Actions)
+### 예시 9: 행정규칙·자치법규 조회
+
+```bash
+legalize admrules list --agency 행정안전부 --type 고시 --page-size 5 --json
+legalize ordinances get "서울특별시 테스트 조례" --type 조례 --jurisdiction 서울특별시 --json
+```
+
+### 예시 10: CI/CD에서 사용 (GitHub Actions)
 
 ```yaml
 # .github/workflows/law-check.yml
@@ -437,7 +465,7 @@ legalize precedents get "2022다12345" --json
     uvx legalize-cli laws get 개인정보보호법 --json > current-law.json
 ```
 
-### 예시 10: 캐시 워밍 (대량 조회 전 준비)
+### 예시 11: 캐시 워밍 (대량 조회 전 준비)
 
 ```bash
 # 자주 사용하는 법령 미리 캐시
@@ -489,14 +517,14 @@ CI에서 `tests/unit/test_json_schema_version.py`로 강제 검증합니다.
 |-------------|-----|------|
 | `trees/` | 1시간 | 저장소 트리 목록 |
 | `commits/` | 10분 | 경로별 커밋 목록 |
-| `contents/` | 7일 | 법령/판례 마크다운 (경로 + author_date 키) |
+| `contents/` | 7일 | 법령/판례/행정규칙/자치법규 마크다운 (경로 + author_date 키) |
 | `precedent-index/` | 24시간 | precedent-kr/metadata.json (~34MB) |
 | `search/` | 1시간 | 코드 검색 결과 |
 | `etag/` | 7일 | 조건부 재검증용 ETag 본문 |
 
 ## Force-push 안전성
 
-`legalize-kr`과 `precedent-kr` 저장소는 파이프라인이 이력을 재구성할 때 주기적으로 force-push됩니다. 이 도구는 캐시 데이터를 커밋 SHA가 아닌 `(path, author_date)` 기준으로 주소를 지정합니다. 경로별 핑거프린트가 재빌드 후 콘텐츠 변경을 감지하고 오래된 캐시 항목을 자동으로 무효화합니다.
+`legalize-kr`, `precedent-kr`, `admrule-kr`, `ordinance-kr` 저장소는 파이프라인이 이력을 재구성할 때 주기적으로 force-push될 수 있습니다. 이 도구는 캐시 데이터를 커밋 SHA가 아닌 `(path, author_date)` 기준으로 주소를 지정합니다. 경로별 핑거프린트가 재빌드 후 콘텐츠 변경을 감지하고 오래된 캐시 항목을 자동으로 무효화합니다.
 
 ## 문제 해결
 
@@ -558,5 +586,5 @@ LEGALIZE_CLI_LIVE=1 pytest tests/live/
 
 ## 라이선스
 
-- 법령/판례 텍스트: 공개 도메인 (대한민국 정부 저작물)
+- 법령/판례/행정규칙/자치법규 텍스트: 공개 도메인 (대한민국 정부 저작물)
 - 이 도구: MIT

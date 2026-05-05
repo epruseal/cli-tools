@@ -12,7 +12,9 @@ from typing import Optional
 import typer
 
 from . import __version__
+from .commands.list_admrules import admrules_app
 from .commands.list_laws import laws_app
+from .commands.list_ordinances import ordinances_app
 from .commands.list_precedents import precedents_app
 
 # Side-effect imports: each of these modules registers one or more commands on
@@ -28,7 +30,7 @@ from .commands.mcp_cmd import mcp_app
 
 app = typer.Typer(
     name="legalize",
-    help="API-first CLI for Korean laws and precedents (legalize-kr).",
+    help="API-first CLI for Korean legal documents mirrored by legalize-kr.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -56,6 +58,8 @@ def main(
 
 app.add_typer(laws_app, name="laws")
 app.add_typer(precedents_app, name="precedents")
+app.add_typer(admrules_app, name="admrules")
+app.add_typer(ordinances_app, name="ordinances")
 app.add_typer(cache_app, name="cache")
 app.add_typer(auth_app, name="auth")
 app.add_typer(mcp_app, name="mcp")

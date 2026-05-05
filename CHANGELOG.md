@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0] — 2026-05-05
+
+### Added
+
+- `legalize admrules list|get` 명령을 추가해 `legalize-kr/admrule-kr`
+  행정규칙 저장소를 조회합니다.
+- `legalize ordinances list|get` 명령을 추가해 `legalize-kr/ordinance-kr`
+  자치법규 저장소를 조회합니다.
+- `legalize search --in admrules|ordinances|all` 및 MCP
+  `admrules_*`, `ordinances_*` 도구를 추가했습니다.
+
 ## [0.2.1] — 2026-04-26
 
 ### Changed

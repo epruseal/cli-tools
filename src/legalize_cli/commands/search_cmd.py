@@ -1,4 +1,4 @@
-"""``legalize search <keyword>`` — unified laws + precedents search."""
+"""``legalize search <keyword>`` — unified legal-document search."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import List, Optional
 
 import typer
 
-from ..config import LAWS_REPO, OWNER, PRECEDENTS_REPO
+from ..config import ADMRULES_REPO, LAWS_REPO, ORDINANCES_REPO, OWNER, PRECEDENTS_REPO
 from ..search.code_search import code_search_items
 from ..search.strategies import select_strategy
 from ..search.tree_filter import tree_filter_items
@@ -22,7 +22,9 @@ from ..util.errors import AuthError, LegalizeError
 
 def register(app: typer.Typer) -> None:
     """Attach the ``search`` command to ``app``."""
-    app.command("search", help="Keyword search over laws and precedents.")(search_cmd)
+    app.command("search", help="Keyword search over legalize-kr document repos.")(
+        search_cmd
+    )
 
 
 def search_cmd(
@@ -39,9 +41,11 @@ def search_cmd(
     cache_dir: Optional[Path] = typer.Option(None, "--cache-dir"),
     offline: bool = typer.Option(False, "--offline"),
 ) -> None:
-    """Search mirrored laws and/or precedents by keyword."""
-    if scope not in ("laws", "precedents", "all"):
-        raise typer.BadParameter("--in must be laws|precedents|all")
+    """Search mirrored legal document repos by keyword."""
+    if scope not in ("laws", "precedents", "admrules", "ordinances", "all"):
+        raise typer.BadParameter(
+            "--in must be laws|precedents|admrules|ordinances|all"
+        )
     if strategy not in ("auto", "code", "tree", "metadata"):
         raise typer.BadParameter("--strategy must be auto|code|tree|metadata")
 
@@ -74,6 +78,34 @@ def search_cmd(
         if scope in ("precedents", "all"):
             items.extend(
                 _precedents_items(client, cache, keyword, chosen, warnings)
+            )
+        if scope in ("admrules", "all"):
+            items.extend(
+                _repo_items(
+                    client,
+                    cache,
+                    keyword,
+                    chosen,
+                    warnings,
+                    repo=ADMRULES_REPO,
+                    source="admrules",
+                    heavy=heavy_content_scan,
+                    yes_exhaust=yes_exhaust,
+                )
+            )
+        if scope in ("ordinances", "all"):
+            items.extend(
+                _repo_items(
+                    client,
+                    cache,
+                    keyword,
+                    chosen,
+                    warnings,
+                    repo=ORDINANCES_REPO,
+                    source="ordinances",
+                    heavy=heavy_content_scan,
+                    yes_exhaust=yes_exhaust,
+                )
             )
 
         items = items[:limit]
@@ -152,6 +184,40 @@ def _precedents_items(
         keyword,
         repo=PRECEDENTS_REPO,
         source="precedents",
+    )
+
+
+def _repo_items(
+    client,
+    cache,
+    keyword: str,
+    chosen: str,
+    warnings: List[str],
+    *,
+    repo: str,
+    source: str,
+    heavy: bool = False,
+    yes_exhaust: bool = False,
+) -> List[dict]:
+    if chosen == "code" and client.token_source != "none":
+        try:
+            return code_search_items(
+                client, keyword, repo=f"{OWNER}/{repo}", source=source
+            )
+        except AuthError:
+            warnings.append(f"code-search failed for {source} — falling back to tree")
+    if client.token_source == "none":
+        warnings.append(
+            f"no GITHUB_TOKEN — code-search unavailable for {source}; using tree strategy"
+        )
+    return tree_filter_items(
+        client,
+        cache,
+        keyword,
+        repo=repo,
+        heavy_content_scan=heavy,
+        yes_exhaust=yes_exhaust,
+        source=source,
     )
 
 

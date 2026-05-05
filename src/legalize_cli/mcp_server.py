@@ -21,7 +21,19 @@ except ImportError as exc:  # pragma: no cover
 
 from .auth import resolve_token
 from .cache import DiskCache
-from .config import DEFAULT_CACHE_DIR, OWNER, PRECEDENTS_REPO
+from .config import (
+    ADMRULES_REPO,
+    DEFAULT_CACHE_DIR,
+    LAWS_REPO,
+    ORDINANCES_REPO,
+    OWNER,
+    PRECEDENTS_REPO,
+)
+from .documents import (
+    enumerate_documents,
+    fetch_document_by_name_or_path,
+    filter_and_paginate_documents,
+)
 from .github.contents import get_file_raw
 from .http import GitHubClient
 from .laws.articles import parse_articles
@@ -41,8 +53,8 @@ from .util.errors import LegalizeError
 mcp = FastMCP(
     "legalize-kr",
     instructions=(
-        "한국 법령·판례 검색. legalize-kr GitHub 미러에서 "
-        "법률 조문, 개정 이력, 판례를 직접 조회합니다."
+        "한국 법령·판례·행정규칙·자치법규 검색. legalize-kr GitHub 미러에서 "
+        "법률 조문, 개정 이력, 판례와 공공 법률문서를 직접 조회합니다."
     ),
 )
 
@@ -242,18 +254,18 @@ def search(
     limit: int = 30,
     strategy: str = "auto",
 ) -> str:
-    """법령 및 판례에서 키워드를 검색합니다.
+    """법령, 판례, 행정규칙, 자치법규에서 키워드를 검색합니다.
 
     Args:
         keyword: 검색 키워드 (예: 부동산 점유취득시효)
-        scope: 검색 대상 (laws|precedents|all). 기본값: all
+        scope: 검색 대상 (laws|precedents|admrules|ordinances|all). 기본값: all
         limit: 최대 결과 수. 기본값: 30
         strategy: 검색 전략 (auto|code|tree|metadata). 기본값: auto.
             code는 GITHUB_TOKEN 필수. auto는 토큰 유무에 따라 자동 선택.
     """
-    if scope not in ("laws", "precedents", "all"):
+    if scope not in ("laws", "precedents", "admrules", "ordinances", "all"):
         return json.dumps(
-            {"error": "scope는 laws|precedents|all 중 하나여야 합니다."},
+            {"error": "scope는 laws|precedents|admrules|ordinances|all 중 하나여야 합니다."},
             ensure_ascii=False,
         )
 
@@ -276,7 +288,7 @@ def search(
                         code_search_items(
                             client,
                             keyword,
-                            repo=f"{OWNER}/legalize-kr",
+                            repo=f"{OWNER}/{LAWS_REPO}",
                             source="laws",
                         )
                     )
@@ -311,6 +323,32 @@ def search(
                     )
                 )
 
+        if scope in ("admrules", "all"):
+            items.extend(
+                _search_repo_items(
+                    client,
+                    cache,
+                    keyword,
+                    chosen,
+                    warnings,
+                    repo=ADMRULES_REPO,
+                    source="admrules",
+                )
+            )
+
+        if scope in ("ordinances", "all"):
+            items.extend(
+                _search_repo_items(
+                    client,
+                    cache,
+                    keyword,
+                    chosen,
+                    warnings,
+                    repo=ORDINANCES_REPO,
+                    source="ordinances",
+                )
+            )
+
         items = items[:limit]
     except LegalizeError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -326,6 +364,203 @@ def search(
             "token_used": client.token_source != "none",
             "items": items,
             "warnings": warnings,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _search_repo_items(
+    client: GitHubClient,
+    cache: DiskCache,
+    keyword: str,
+    chosen: str,
+    warnings: list,
+    *,
+    repo: str,
+    source: str,
+) -> list:
+    if chosen == "code" and client.token_source != "none":
+        try:
+            return code_search_items(
+                client,
+                keyword,
+                repo=f"{OWNER}/{repo}",
+                source=source,
+            )
+        except LegalizeError:
+            warnings.append(f"{source} code-search 실패, tree 전략으로 전환합니다.")
+    return tree_filter_items(client, cache, keyword, repo=repo, source=source)
+
+
+@mcp.tool()
+def admrules_list(
+    type_: Optional[str] = None,
+    agency: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> str:
+    """행정규칙 목록을 조회합니다.
+
+    Args:
+        type_: 행정규칙 종류 필터 (고시|훈령|예규|공고|...)
+        agency: 기관경로에 포함될 기관명. 생략 시 전체
+        page: 페이지 번호. 기본값: 1
+        page_size: 페이지당 항목 수. 기본값: 50
+    """
+    client, cache = _make_client()
+    try:
+        entries = enumerate_documents(client, cache, repo=ADMRULES_REPO)
+        total, window, next_page = filter_and_paginate_documents(
+            entries,
+            category=type_,
+            parent_contains=agency,
+            page=page,
+            page_size=page_size,
+        )
+    except LegalizeError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        client.close()
+
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "kind": "admrules.list",
+            "total": total,
+            "page": page,
+            "next_page": next_page,
+            "items": [e.model_dump() for e in window],
+        },
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
+def admrules_get(
+    identifier: str,
+    type_: Optional[str] = None,
+    agency: Optional[str] = None,
+) -> str:
+    """행정규칙 전문을 조회합니다.
+
+    Args:
+        identifier: 행정규칙명 또는 저장소 상대 경로
+        type_: 동명이문서 구분용 행정규칙 종류
+        agency: 동명이문서 구분용 기관경로 세그먼트
+    """
+    client, cache = _make_client()
+    try:
+        path, body = fetch_document_by_name_or_path(
+            client,
+            cache,
+            identifier,
+            repo=ADMRULES_REPO,
+            category=type_,
+            parent_contains=agency,
+        )
+    except LegalizeError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        client.close()
+
+    text = body.decode("utf-8", errors="replace")
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "kind": "admrules.get",
+            "identifier": identifier,
+            "path": path,
+            "body": text,
+        },
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
+def ordinances_list(
+    type_: Optional[str] = None,
+    jurisdiction: Optional[str] = None,
+    subdivision: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> str:
+    """자치법규 목록을 조회합니다.
+
+    Args:
+        type_: 자치법규 종류 필터 (조례|규칙|훈령|예규|고시|...)
+        jurisdiction: 광역자치단체 필터
+        subdivision: 기초자치단체, _본청, 또는 _교육청 필터
+        page: 페이지 번호. 기본값: 1
+        page_size: 페이지당 항목 수. 기본값: 50
+    """
+    client, cache = _make_client()
+    try:
+        entries = enumerate_documents(client, cache, repo=ORDINANCES_REPO)
+        total, window, next_page = filter_and_paginate_documents(
+            entries,
+            category=type_,
+            parent0=jurisdiction,
+            parent1=subdivision,
+            page=page,
+            page_size=page_size,
+        )
+    except LegalizeError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        client.close()
+
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "kind": "ordinances.list",
+            "total": total,
+            "page": page,
+            "next_page": next_page,
+            "items": [e.model_dump() for e in window],
+        },
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
+def ordinances_get(
+    identifier: str,
+    type_: Optional[str] = None,
+    jurisdiction: Optional[str] = None,
+    subdivision: Optional[str] = None,
+) -> str:
+    """자치법규 전문을 조회합니다.
+
+    Args:
+        identifier: 자치법규명 또는 저장소 상대 경로
+        type_: 동명이문서 구분용 자치법규 종류
+        jurisdiction: 동명이문서 구분용 광역자치단체
+        subdivision: 동명이문서 구분용 기초자치단체, _본청, 또는 _교육청
+    """
+    client, cache = _make_client()
+    try:
+        path, body = fetch_document_by_name_or_path(
+            client,
+            cache,
+            identifier,
+            repo=ORDINANCES_REPO,
+            category=type_,
+            parent0=jurisdiction,
+            parent1=subdivision,
+        )
+    except LegalizeError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        client.close()
+
+    text = body.decode("utf-8", errors="replace")
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "kind": "ordinances.get",
+            "identifier": identifier,
+            "path": path,
+            "body": text,
         },
         ensure_ascii=False,
     )

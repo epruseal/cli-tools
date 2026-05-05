@@ -105,7 +105,9 @@ def install_client_factory(monkeypatch, factory, modules=None):
     if modules is None:
         modules = [
             "legalize_cli.util.cli_common",
+            "legalize_cli.commands.list_admrules",
             "legalize_cli.commands.list_laws",
+            "legalize_cli.commands.list_ordinances",
             "legalize_cli.commands.list_precedents",
             "legalize_cli.commands.precedent",
             "legalize_cli.commands.asof_cmd",

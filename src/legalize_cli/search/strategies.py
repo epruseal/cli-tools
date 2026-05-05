@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-Scope = Literal["laws", "precedents", "all"]
+Scope = Literal["laws", "precedents", "admrules", "ordinances", "all"]
 Strategy = Literal["code", "tree"]
 
 
