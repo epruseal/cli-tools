@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
-    { name = "legalize-kr contributors" },
+    { name = "Junghwan Park" },
 ]
 keywords = ["korean", "law", "legalize-kr", "cli", "github"]
 classifiers = [
@@ -52,8 +52,8 @@ legalize-mcp = "legalize_cli.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/legalize-kr"
-Repository = "https://github.com/legalize-kr/legalize-cli"
-Issues = "https://github.com/legalize-kr/legalize-cli/issues"
+Repository = "https://github.com/legalize-kr/cli-tools"
+Issues = "https://github.com/legalize-kr/cli-tools/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/legalize_cli"]

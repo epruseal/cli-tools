@@ -33,6 +33,7 @@ from legalize_cli.__main__ import app
         ["cache", "clear", "--help"],
         ["auth", "--help"],
         ["auth", "status", "--help"],
+        ["mcp", "--help"],
     ],
 )
 def test_help_exits_zero(argv) -> None:
@@ -46,3 +47,4 @@ def test_readme_mentions_budget() -> None:
 
     readme = (Path(__file__).parent.parent.parent / "README.md").read_text()
     assert "시간당 60회" in readme
+    assert "uvx --from legalize-cli[mcp] legalize-mcp" in readme

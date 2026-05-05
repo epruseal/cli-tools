@@ -9,7 +9,7 @@ GitHub REST API로 한국 법령·판례·행정규칙·자치법규를 조회�
 Python 3.10+가 필요합니다.
 
 ```bash
-# 권장: 격리 설치
+# 권장: 한 번 설치해 계속 사용
 pipx install legalize-cli
 
 # venv 또는 CI 내부
@@ -18,6 +18,45 @@ pip install legalize-cli
 # 설치 없이 바로 실행
 uvx legalize-cli laws list --json
 ```
+
+MCP 서버까지 사용하려면 `mcp` extra가 필요합니다.
+
+```bash
+# 설치 없이 MCP 서버 실행
+uvx --from legalize-cli[mcp] legalize-mcp
+
+# 또는 한 번 설치해 계속 사용
+pipx install 'legalize-cli[mcp]'
+legalize-mcp
+```
+
+AI Agent용 스킬/플러그인 설치 안내는 [`legalize-kr/agent-skills`](https://github.com/legalize-kr/agent-skills)를 참고하세요.
+
+## AI Agent 스킬/플러그인
+
+[`legalize-kr/agent-skills`](https://github.com/legalize-kr/agent-skills)는
+Claude Code, Claude Cowork, Cursor, Codex, Gemini CLI, Cline, Warp 등에서
+Legalize-KR 데이터를 더 쉽게 쓰기 위한 스킬/플러그인 저장소입니다.
+
+- `cli-tools`: `legalize` CLI와 로컬 stdio MCP 서버(`legalize-mcp`)를 제공합니다.
+- `agent-skills`: 각 AI Agent가 Legalize-KR 데이터셋, CLI, MCP, Git 저장소 접근법을 이해하도록 설치 가능한 스킬과 플러그인 메타데이터를 제공합니다.
+
+스킬만 설치하려면:
+
+```bash
+npx skills add legalize-kr/agent-skills --skill legalize-kr
+```
+
+Claude Code 플러그인으로 설치하려면:
+
+```bash
+claude plugin marketplace add legalize-kr/agent-skills
+claude plugin install legalize-kr@legalize-kr-marketplace
+```
+
+비개발자에게는 GitHub Releases에서 제공되는 `legalize-kr-plugin.zip`을
+Claude Cowork에 업로드하는 경로가 가장 단순합니다. 실제 도구 호출이 필요하면
+이 저장소의 `legalize-mcp`를 로컬 MCP 서버로 함께 연결합니다.
 
 ## 빠른 시작
 
@@ -148,12 +187,19 @@ legalize auth status --json
 
 Claude Desktop, Cursor 등 MCP 지원 클라이언트에 legalize-kr을 tool로 등록할 수 있습니다.
 
-### 설치
+`legalize-mcp`는 로컬 stdio MCP 서버입니다. Claude Desktop, Claude Code, Cursor, Gemini CLI 같은 호스트 앱이 이 명령을 실행하고 표준입출력으로 통신합니다.
+
+### 실행 방식 선택
 
 ```bash
-pip install 'legalize-cli[mcp]'
-# 또는
+# 별도 설치 없이 실행
+uvx --from legalize-cli[mcp] legalize-mcp
+
+# 격리 환경에 한 번 설치
 pipx install 'legalize-cli[mcp]'
+
+# venv 또는 CI 내부
+pip install 'legalize-cli[mcp]'
 ```
 
 ### 제공 Tool 목록
@@ -174,6 +220,22 @@ pipx install 'legalize-cli[mcp]'
 ### Claude Desktop 설정
 
 `~/Library/Application Support/Claude/claude_desktop_config.json` 에 추가:
+
+```json
+{
+  "mcpServers": {
+    "legalize-kr": {
+      "command": "uvx",
+      "args": ["--from", "legalize-cli[mcp]", "legalize-mcp"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+`pipx install 'legalize-cli[mcp]'`로 이미 설치했다면 `legalize-mcp`를 직접 실행해도 됩니다.
 
 ```json
 {
@@ -213,7 +275,8 @@ pipx install 'legalize-cli[mcp]'
   "servers": {
     "legalize-kr": {
       "type": "stdio",
-      "command": "legalize-mcp",
+      "command": "uvx",
+      "args": ["--from", "legalize-cli[mcp]", "legalize-mcp"],
       "env": {
         "GITHUB_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxx"
       }
@@ -230,6 +293,9 @@ legalize mcp serve
 
 # 또는 단축 엔트리포인트
 legalize-mcp
+
+# 설치 없이 실행 확인
+uvx --from legalize-cli[mcp] legalize-mcp
 ```
 
 ### 사용 예시 (Claude에서)
@@ -527,6 +593,15 @@ CI에서 `tests/unit/test_json_schema_version.py`로 강제 검증합니다.
 `legalize-kr`, `precedent-kr`, `admrule-kr`, `ordinance-kr` 저장소는 파이프라인이 이력을 재구성할 때 주기적으로 force-push될 수 있습니다. 이 도구는 캐시 데이터를 커밋 SHA가 아닌 `(path, author_date)` 기준으로 주소를 지정합니다. 경로별 핑거프린트가 재빌드 후 콘텐츠 변경을 감지하고 오래된 캐시 항목을 자동으로 무효화합니다.
 
 ## 문제 해결
+
+**"legalize-mcp: command not found"**
+```bash
+# 설치 없이 실행할 수 있는지 먼저 확인
+uvx --from legalize-cli[mcp] legalize-mcp
+
+# 계속 사용할 환경이라면 설치
+pipx install 'legalize-cli[mcp]'
+```
 
 **"Rate limit exceeded"**
 ```bash

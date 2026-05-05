@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- README의 MCP 설정 예시를 `uvx --from legalize-cli[mcp] legalize-mcp`
+  중심으로 정리하고, `pipx`/`pip` 설치 흐름을 보조 경로로 명확히 구분했습니다.
+- 패키지 메타데이터의 author와 GitHub 저장소 URL을 현재 관리 정보에 맞게 갱신했습니다.
+
 ## [0.3.0] — 2026-05-05
 
 ### Added
