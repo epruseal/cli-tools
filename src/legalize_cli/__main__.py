@@ -30,7 +30,7 @@ from .commands.mcp_cmd import mcp_app
 
 app = typer.Typer(
     name="legalize",
-    help="API-first CLI for Korean legal documents mirrored by legalize-kr.",
+    help="CLI and MCP tools for querying Korean legal data mirrored by legalize-kr.",
     no_args_is_help=True,
     add_completion=False,
 )

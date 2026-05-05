@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "legalize-cli"
 version = "0.3.0"
-description = "API-first CLI for Korean legal documents mirrored by legalize-kr."
+description = "CLI and MCP tools for querying Korean legal data mirrored by legalize-kr."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
