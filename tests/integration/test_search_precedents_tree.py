@@ -59,3 +59,80 @@ def test_search_no_match() -> None:
         client.close()
 
     assert items == []
+
+
+def test_search_handles_truncated_root_tree() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.endswith("/git/trees/HEAD?recursive=1"):
+            return httpx.Response(
+                200,
+                json={
+                    "truncated": True,
+                    "tree": [
+                        {
+                            "path": "민사",
+                            "type": "tree",
+                            "sha": "sha-civil",
+                        }
+                    ],
+                },
+            )
+        if url.endswith("/git/trees/HEAD"):
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {
+                            "path": "민사",
+                            "type": "tree",
+                            "sha": "sha-civil",
+                        },
+                        {
+                            "path": "특허",
+                            "type": "tree",
+                            "sha": "sha-patent",
+                        },
+                    ]
+                },
+            )
+        if url.endswith("/git/trees/sha-civil?recursive=1"):
+            return httpx.Response(200, json={"tree": []})
+        if url.endswith("/git/trees/sha-patent?recursive=1"):
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {
+                            "path": "대법원/대법원_2026-01-15_2022후10401.md",
+                            "type": "blob",
+                            "sha": "sha-doc",
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(404, json={"message": f"unexpected {url}"})
+
+    client = GitHubClient(
+        transport=httpx.MockTransport(handler),
+        token=None,
+        token_source="none",
+    )
+    try:
+        items = tree_filter_items(
+            client,
+            None,
+            "2022후10401",
+            repo="precedent-kr",
+            source="precedents",
+        )
+    finally:
+        client.close()
+
+    assert items == [
+        {
+            "source": "precedents",
+            "path": "특허/대법원/대법원_2026-01-15_2022후10401.md",
+            "match_type": "title",
+        }
+    ]

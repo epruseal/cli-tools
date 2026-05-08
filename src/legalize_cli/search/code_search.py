@@ -21,9 +21,10 @@ def code_search_items(
     *,
     repo: str,
     source: str,
+    limit: int = 100,
 ) -> List[Dict[str, str]]:
     """Return normalized items for the JSON ``items[]`` payload."""
-    matches = search_code(client, normalize_query(query), repo=repo)
+    matches = search_code(client, normalize_query(query), repo=repo, limit=limit)
     return [
         {
             "source": source,

@@ -147,3 +147,78 @@ def test_disambiguation_raises() -> None:
     assert "ambiguous" in msg
     assert "2022다99999" in msg
     assert "2" in msg  # reports the hit count
+
+
+def test_lookup_handles_truncated_root_tree() -> None:
+    target_path = f"특허/대법원/대법원{SEP}2026-01-15{SEP}2022후10401.md"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.endswith("/git/trees/main?recursive=1"):
+            return httpx.Response(
+                200,
+                json={
+                    "truncated": True,
+                    "tree": [
+                        {
+                            "path": "민사",
+                            "type": "tree",
+                            "sha": "sha-civil",
+                        }
+                    ],
+                },
+            )
+        if url.endswith("/git/trees/main"):
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {
+                            "path": "민사",
+                            "type": "tree",
+                            "sha": "sha-civil",
+                        },
+                        {
+                            "path": "특허",
+                            "type": "tree",
+                            "sha": "sha-patent",
+                        },
+                    ]
+                },
+            )
+        if url.endswith("/git/trees/sha-civil?recursive=1"):
+            return httpx.Response(200, json={"tree": []})
+        if url.endswith("/git/trees/sha-patent?recursive=1"):
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {
+                            "path": "대법원",
+                            "type": "tree",
+                            "sha": "sha-supreme",
+                        },
+                        {
+                            "path": f"대법원/대법원{SEP}2026-01-15{SEP}2022후10401.md",
+                            "type": "blob",
+                            "sha": "sha-doc",
+                        },
+                    ]
+                },
+            )
+        if "/contents/" in url:
+            return httpx.Response(200, content=SAMPLE_BYTES)
+        return httpx.Response(404, json={"message": f"unexpected {url}"})
+
+    client = GitHubClient(
+        transport=httpx.MockTransport(handler),
+        token=None,
+        token_source="none",
+    )
+    try:
+        path, body = fetch_by_id_or_path(client, None, "2022후10401")
+    finally:
+        client.close()
+
+    assert path == target_path
+    assert body == SAMPLE_BYTES

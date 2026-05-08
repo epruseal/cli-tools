@@ -7,7 +7,15 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 from ..http import GitHubClient
-from ..util.errors import AuthError
+from ..util.errors import AuthError, LegalizeError
+
+GITHUB_SEARCH_RESULT_LIMIT = 1000
+
+
+class SearchIncompleteError(LegalizeError):
+    """Raised when GitHub reports ``incomplete_results`` for code search."""
+
+    exit_code = 11
 
 
 class CodeMatch(BaseModel):
@@ -26,11 +34,12 @@ def search_code(
     query: str,
     *,
     repo: str,
-    per_page: int = 30,
+    limit: int = 100,
 ) -> List[CodeMatch]:
     """Run a ``/search/code`` query restricted to ``repo``.
 
     :raises AuthError: if the client has no token attached.
+    :raises SearchIncompleteError: if GitHub reports a timed-out search.
     """
     if client.token_source == "none":
         raise AuthError(
@@ -38,13 +47,37 @@ def search_code(
         )
 
     q = f"{query} repo:{repo} extension:md"
-    payload = client.get_json(
-        "/search/code",
-        params={"q": q, "per_page": per_page},
-        cache_ttl=3600,
-    )
-    items = payload.get("items", [])
-    return [CodeMatch.model_validate(item) for item in items]
+    target = min(max(limit, 1), GITHUB_SEARCH_RESULT_LIMIT)
+    per_page = min(target, 100)
+    page = 1
+    items: list[dict] = []
+
+    while len(items) < target:
+        payload = client.get_json(
+            "/search/code",
+            params={"q": q, "per_page": per_page, "page": page},
+            cache_ttl=3600,
+        )
+        if payload.get("incomplete_results"):
+            raise SearchIncompleteError(
+                "GitHub code search returned incomplete_results=true; "
+                "retry with --strategy tree"
+            )
+
+        page_items = payload.get("items", [])
+        items.extend(page_items)
+
+        total_count = min(payload.get("total_count", 0), GITHUB_SEARCH_RESULT_LIMIT)
+        if len(items) >= total_count or len(page_items) < per_page:
+            break
+        page += 1
+
+    return [CodeMatch.model_validate(item) for item in items[:target]]
 
 
-__all__ = ["CodeMatch", "search_code"]
+__all__ = [
+    "CodeMatch",
+    "GITHUB_SEARCH_RESULT_LIMIT",
+    "SearchIncompleteError",
+    "search_code",
+]

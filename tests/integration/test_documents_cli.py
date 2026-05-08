@@ -87,3 +87,83 @@ def test_ordinances_get_json(monkeypatch) -> None:
     assert payload["kind"] == "ordinances.get"
     assert payload["path"] == "서울특별시/_본청/조례/서울특별시 테스트 조례/본문.md"
     assert payload["body"] == "\n자치법규 본문"
+
+
+def test_ordinances_list_handles_truncated_root_tree(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.endswith("/git/trees/main?recursive=1"):
+            return httpx.Response(
+                200,
+                json={
+                    "truncated": True,
+                    "tree": [
+                        {
+                            "path": "강원특별자치도",
+                            "type": "tree",
+                            "sha": "sha-gangwon",
+                        }
+                    ],
+                },
+            )
+        if url.endswith("/git/trees/main"):
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {
+                            "path": "강원특별자치도",
+                            "type": "tree",
+                            "sha": "sha-gangwon",
+                        },
+                        {
+                            "path": "서울특별시",
+                            "type": "tree",
+                            "sha": "sha-seoul",
+                        },
+                    ]
+                },
+            )
+        if url.endswith("/git/trees/sha-gangwon?recursive=1"):
+            return httpx.Response(200, json={"tree": []})
+        if url.endswith("/git/trees/sha-seoul?recursive=1"):
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {
+                            "path": "_본청/조례/서울특별시 테스트 조례/본문.md",
+                            "type": "blob",
+                            "sha": "ordinance-1",
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(404, json={"message": f"unexpected {url}"})
+
+    install_client_factory(
+        monkeypatch,
+        lambda opts: (
+            GitHubClient(transport=httpx.MockTransport(handler), token=None, token_source="none"),
+            None,
+        ),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ordinances",
+            "list",
+            "--type",
+            "조례",
+            "--jurisdiction",
+            "서울특별시",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["kind"] == "ordinances.list"
+    assert payload["total"] == 1
+    assert payload["items"][0]["path"] == "서울특별시/_본청/조례/서울특별시 테스트 조례/본문.md"

@@ -290,6 +290,7 @@ def search(
                             keyword,
                             repo=f"{OWNER}/{LAWS_REPO}",
                             source="laws",
+                            limit=limit,
                         )
                     )
                 except LegalizeError:
@@ -306,14 +307,25 @@ def search(
 
         if scope in ("precedents", "all"):
             if chosen == "code" and client.token_source != "none":
-                items.extend(
-                    code_search_items(
-                        client,
-                        keyword,
-                        repo=f"{OWNER}/{PRECEDENTS_REPO}",
-                        source="precedents",
+                try:
+                    items.extend(
+                        code_search_items(
+                            client,
+                            keyword,
+                            repo=f"{OWNER}/{PRECEDENTS_REPO}",
+                            source="precedents",
+                            limit=limit,
+                        )
                     )
-                )
+                except LegalizeError:
+                    warnings.append("precedents code-search 실패, tree 전략으로 전환합니다.")
+                    items.extend(
+                        tree_filter_items(
+                            client, cache, keyword,
+                            repo=PRECEDENTS_REPO,
+                            source="precedents",
+                        )
+                    )
             else:
                 items.extend(
                     tree_filter_items(
@@ -333,6 +345,7 @@ def search(
                     warnings,
                     repo=ADMRULES_REPO,
                     source="admrules",
+                    limit=limit,
                 )
             )
 
@@ -346,6 +359,7 @@ def search(
                     warnings,
                     repo=ORDINANCES_REPO,
                     source="ordinances",
+                    limit=limit,
                 )
             )
 
@@ -378,6 +392,7 @@ def _search_repo_items(
     *,
     repo: str,
     source: str,
+    limit: int,
 ) -> list:
     if chosen == "code" and client.token_source != "none":
         try:
@@ -386,6 +401,7 @@ def _search_repo_items(
                 keyword,
                 repo=f"{OWNER}/{repo}",
                 source=source,
+                limit=limit,
             )
         except LegalizeError:
             warnings.append(f"{source} code-search 실패, tree 전략으로 전환합니다.")

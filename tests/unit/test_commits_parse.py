@@ -63,3 +63,43 @@ def test_list_commits_message_preserved() -> None:
     commits = list_commits(client, "legalize-kr", "legalize-kr", "kr/민법/법률.md")
 
     assert "민법" in commits[0].message
+
+
+def test_list_commits_fetches_all_pages() -> None:
+    calls: list[str] = []
+
+    def item(sha: str) -> dict:
+        return {
+            "sha": sha,
+            "commit": {
+                "author": {"date": "2026-04-30T03:00:00Z"},
+                "committer": {"date": "2026-04-30T04:30:00Z"},
+                "message": sha,
+            },
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        calls.append(url)
+        if "page=1" in url:
+            return httpx.Response(200, json=[item("sha-1"), item("sha-2")])
+        if "page=2" in url:
+            return httpx.Response(200, json=[item("sha-3")])
+        return httpx.Response(404, json={"message": f"unexpected {url}"})
+
+    client = GitHubClient(
+        transport=httpx.MockTransport(handler),
+        token=None,
+        token_source="none",
+    )
+
+    commits = list_commits(
+        client,
+        "legalize-kr",
+        "legalize-kr",
+        "kr/민법/법률.md",
+        per_page=2,
+    )
+
+    assert [commit.sha for commit in commits] == ["sha-1", "sha-2", "sha-3"]
+    assert any("page=2" in url for url in calls)

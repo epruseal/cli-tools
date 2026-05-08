@@ -8,6 +8,7 @@ from typing import List, Optional
 import typer
 
 from ..config import ADMRULES_REPO, LAWS_REPO, ORDINANCES_REPO, OWNER, PRECEDENTS_REPO
+from ..github.search_code import SearchIncompleteError
 from ..search.code_search import code_search_items
 from ..search.strategies import select_strategy
 from ..search.tree_filter import tree_filter_items
@@ -73,11 +74,12 @@ def search_cmd(
                     heavy_content_scan,
                     yes_exhaust,
                     warnings,
+                    limit,
                 )
             )
         if scope in ("precedents", "all"):
             items.extend(
-                _precedents_items(client, cache, keyword, chosen, warnings)
+                _precedents_items(client, cache, keyword, chosen, warnings, limit)
             )
         if scope in ("admrules", "all"):
             items.extend(
@@ -91,6 +93,7 @@ def search_cmd(
                     source="admrules",
                     heavy=heavy_content_scan,
                     yes_exhaust=yes_exhaust,
+                    limit=limit,
                 )
             )
         if scope in ("ordinances", "all"):
@@ -105,6 +108,7 @@ def search_cmd(
                     source="ordinances",
                     heavy=heavy_content_scan,
                     yes_exhaust=yes_exhaust,
+                    limit=limit,
                 )
             )
 
@@ -144,14 +148,21 @@ def _laws_items(
     heavy: bool,
     yes_exhaust: bool,
     warnings: List[str],
+    limit: int,
 ) -> List[dict]:
     if chosen == "code" and client.token_source != "none":
         try:
             return code_search_items(
-                client, keyword, repo=f"{OWNER}/{LAWS_REPO}", source="laws"
+                client,
+                keyword,
+                repo=f"{OWNER}/{LAWS_REPO}",
+                source="laws",
+                limit=limit,
             )
         except AuthError:
             warnings.append("code-search failed — falling back to tree")
+        except SearchIncompleteError as exc:
+            warnings.append(f"{exc}; falling back to tree")
     if client.token_source == "none":
         warnings.append("no GITHUB_TOKEN — code-search unavailable; using tree strategy")
     return tree_filter_items(
@@ -170,14 +181,21 @@ def _precedents_items(
     keyword: str,
     chosen: str,
     warnings: List[str],
+    limit: int,
 ) -> List[dict]:
     if chosen == "code" and client.token_source != "none":
         try:
             return code_search_items(
-                client, keyword, repo=f"{OWNER}/{PRECEDENTS_REPO}", source="precedents"
+                client,
+                keyword,
+                repo=f"{OWNER}/{PRECEDENTS_REPO}",
+                source="precedents",
+                limit=limit,
             )
         except AuthError:
             warnings.append("code-search failed for precedents — falling back to tree")
+        except SearchIncompleteError as exc:
+            warnings.append(f"{exc}; falling back to tree")
     return tree_filter_items(
         client,
         cache,
@@ -198,14 +216,21 @@ def _repo_items(
     source: str,
     heavy: bool = False,
     yes_exhaust: bool = False,
+    limit: int = 100,
 ) -> List[dict]:
     if chosen == "code" and client.token_source != "none":
         try:
             return code_search_items(
-                client, keyword, repo=f"{OWNER}/{repo}", source=source
+                client,
+                keyword,
+                repo=f"{OWNER}/{repo}",
+                source=source,
+                limit=limit,
             )
         except AuthError:
             warnings.append(f"code-search failed for {source} — falling back to tree")
+        except SearchIncompleteError as exc:
+            warnings.append(f"{source} {exc}; falling back to tree")
     if client.token_source == "none":
         warnings.append(
             f"no GITHUB_TOKEN — code-search unavailable for {source}; using tree strategy"

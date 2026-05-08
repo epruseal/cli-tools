@@ -40,6 +40,7 @@ def list_commits(
     until: Optional[str] = None,
     per_page: int = 100,
     page: int = 1,
+    max_pages: Optional[int] = None,
 ) -> List[CommitInfo]:
     """Return commits touching ``path``, newest first.
 
@@ -47,23 +48,37 @@ def list_commits(
         Passed verbatim as ``?until=`` — the GitHub API accepts it.
     :param per_page: GitHub's max is 100. We keep it at 100 by default to
         widen the same-date tiebreak window (§5 of the plan).
-    :param page: 1-indexed page. Pagination via Link header is a future
-        step; most paths in these repos have ≤100 revisions.
+    :param page: 1-indexed first page.
+    :param max_pages: Optional safety cap, mainly for tests or constrained
+        callers. ``None`` fetches until GitHub returns a short page.
     """
-    params: dict[str, str | int] = {
-        "path": path,
-        "per_page": per_page,
-        "page": page,
-    }
-    if until:
-        params["until"] = until
+    result: List[CommitInfo] = []
+    pages_read = 0
+    current_page = page
 
-    payload = client.get_json(
-        f"/repos/{owner}/{repo}/commits",
-        params=params,
-    )
+    while True:
+        params: dict[str, str | int] = {
+            "path": path,
+            "per_page": per_page,
+            "page": current_page,
+        }
+        if until:
+            params["until"] = until
 
-    return [_parse_commit(item) for item in payload]
+        payload = client.get_json(
+            f"/repos/{owner}/{repo}/commits",
+            params=params,
+        )
+        result.extend(_parse_commit(item) for item in payload)
+
+        pages_read += 1
+        if len(payload) < per_page:
+            break
+        if max_pages is not None and pages_read >= max_pages:
+            break
+        current_page += 1
+
+    return result
 
 
 def _parse_commit(item: dict) -> CommitInfo:

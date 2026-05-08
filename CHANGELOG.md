@@ -2,11 +2,24 @@
 
 ## Unreleased
 
+## [0.3.1] — 2026-05-08
+
+### Fixed
+
+- GitHub Trees API의 `truncated: true` 응답을 감지하면 하위 tree를 나누어
+  다시 조회하도록 수정했습니다. 이로써 `ordinance-kr`의 `서울특별시` 자치법규와
+  `precedent-kr`의 뒤쪽 사건종류가 누락되던 문제를 해결했습니다.
+- GitHub commits API pagination을 끝까지 따라가도록 수정해 법령 개정 이력 조회가
+  첫 페이지만 사용하는 부분 결과가 되지 않도록 했습니다.
+- GitHub code search의 pagination을 `--limit` 범위까지 처리하고,
+  `incomplete_results=true` 응답에서는 tree 전략으로 fallback하도록 수정했습니다.
+
 ### Changed
 
 - README의 MCP 설정 예시를 `uvx --from legalize-cli[mcp] legalize-mcp`
   중심으로 정리하고, `pipx`/`pip` 설치 흐름을 보조 경로로 명확히 구분했습니다.
 - 패키지 메타데이터의 author와 GitHub 저장소 URL을 현재 관리 정보에 맞게 갱신했습니다.
+- GitHub Contents/Blobs API 크기 제한 설명을 공식 문서 기준에 맞게 정정했습니다.
 
 ## [0.3.0] — 2026-05-05
 

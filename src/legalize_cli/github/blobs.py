@@ -1,9 +1,8 @@
 """Wrapper for ``GET /repos/{owner}/{repo}/git/blobs/{sha}``.
 
-Unlike ``/contents/``, the blob endpoint supports files up to 100MB when
-``Accept: application/vnd.github.raw`` is sent. This is the REST fallback
-for fetching ``precedent-kr/metadata.json`` (~34MB) when the preferred
-``raw.githubusercontent.com`` CDN path fails.
+The blob endpoint supports files up to 100MB when ``Accept:
+application/vnd.github.raw`` is sent. It is useful when callers already have a
+blob SHA from a tree response.
 """
 
 from __future__ import annotations
