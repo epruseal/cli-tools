@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from dateutil import parser as dateparser
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..http import GitHubClient
 

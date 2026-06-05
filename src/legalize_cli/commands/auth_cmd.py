@@ -8,7 +8,7 @@ import typer
 
 from ..auth import mask_token, resolve_token
 from ..http import GitHubClient
-from ..util.cli_common import SCHEMA_VERSION, emit_json
+from ..util.cli_common import emit_json
 
 auth_app = typer.Typer(
     name="auth",

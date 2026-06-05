@@ -8,7 +8,7 @@ Pins the same-date tiebreaker contract:
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta, timezone
 from typing import List
 
 from legalize_cli.github.commits import CommitInfo

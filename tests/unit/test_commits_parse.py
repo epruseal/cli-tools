@@ -31,9 +31,12 @@ def test_list_commits_parses_fixture_and_normalizes_to_kst() -> None:
     # SHA round-trips verbatim.
     assert first.sha.startswith("ca7d5c5")
     # GitHub commit dates are normalized to KST for date-based law lookups.
-    assert first.author_date.utcoffset() is not None
-    assert first.author_date.utcoffset().total_seconds() == 9 * 3600
-    assert first.committer_date.utcoffset().total_seconds() == 9 * 3600
+    author_offset = first.author_date.utcoffset()
+    committer_offset = first.committer_date.utcoffset()
+    assert author_offset is not None
+    assert committer_offset is not None
+    assert author_offset.total_seconds() == 9 * 3600
+    assert committer_offset.total_seconds() == 9 * 3600
     assert first.committer_date.hour == 12
 
 

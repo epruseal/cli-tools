@@ -11,7 +11,7 @@ from legalize_cli.laws.model import Article, ArticleNo
 
 def _a(jo: str, ui: str | None, content: str) -> Article:
     return Article(
-        article_no=ArticleNo(jo=jo, ui=ui),
+        article_no=ArticleNo.model_validate({"조": jo, "의": ui}),
         heading_level=5,
         heading_text=f"##### 제{jo}조" + (f"의{ui}" if ui else ""),
         content=content,
@@ -71,6 +71,7 @@ def test_rename_above_threshold() -> None:
     statuses = [(c.status, c.similarity) for c in result.changes]
     assert any(s[0] == "renamed" for s in statuses)
     ratio = next(s[1] for s in statuses if s[0] == "renamed")
+    assert ratio is not None
     assert ratio >= RENAME_SIMILARITY_THRESHOLD
 
 

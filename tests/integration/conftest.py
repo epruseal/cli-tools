@@ -10,12 +10,15 @@ from __future__ import annotations
 import json as _json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 import httpx
 import pytest
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
+RouteValue = (
+    httpx.Response | tuple[int, object] | Callable[[httpx.Request], httpx.Response]
+)
 
 
 @dataclass
@@ -36,7 +39,7 @@ class CapturingMock:
         return [str(r.url) for r in self.calls]
 
 
-def build_mock(routes: Dict[str, object]) -> CapturingMock:
+def build_mock(routes: Dict[str, RouteValue]) -> CapturingMock:
     """Build a mock that routes by URL-path-containment.
 
     ``routes`` is ordered — earlier keys take precedence on prefix match. The

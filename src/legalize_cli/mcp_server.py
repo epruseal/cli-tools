@@ -154,7 +154,9 @@ def laws_get(
             "requested_date": target.isoformat(),
             "resolved_commit_date": chosen.author_date.date().isoformat(),
             "path": path,
-            "frontmatter": fm.model_dump(by_alias=True, exclude_none=True),
+            "frontmatter": fm.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            ),
             "body": md_body,
         },
         ensure_ascii=False,

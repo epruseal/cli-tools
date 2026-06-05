@@ -14,6 +14,10 @@ from legalize_cli.util.errors import AmbiguousHeadingLevelError
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "laws"
 
 
+def _article_no(jo: str, ui: str | None = None) -> ArticleNo:
+    return ArticleNo.model_validate({"조": jo, "의": ui})
+
+
 def _body(name: str) -> str:
     _fm, body = parse_frontmatter((FIXTURES / name).read_text())
     return body
@@ -46,7 +50,7 @@ def test_five_hash_articles_with_parent_chain() -> None:
     assert len(articles) == 5
     assert [a.article_no.jo for a in articles] == ["838", "839", "839", "840", "841"]
     article_839_ui_2 = articles[2]
-    assert article_839_ui_2.article_no == ArticleNo(jo="839", ui="2")
+    assert article_839_ui_2.article_no == _article_no("839", "2")
     assert article_839_ui_2.parent_structure == [
         "제4편 친족",
         "제3장 혼인",

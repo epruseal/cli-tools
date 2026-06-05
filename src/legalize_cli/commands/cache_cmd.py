@@ -9,9 +9,9 @@ from typing import Optional
 
 import typer
 
-from ..cache import TTLS, DiskCache, _SUBDIRS
+from ..cache import TTLS, _SUBDIRS
 from ..config import DEFAULT_CACHE_DIR
-from ..util.cli_common import SCHEMA_VERSION, emit_json
+from ..util.cli_common import emit_json
 
 cache_app = typer.Typer(
     name="cache",

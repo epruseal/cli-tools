@@ -134,7 +134,9 @@ def _build_article(
     parent_structure = _parent_structure(lines, start, article_level)
 
     return Article(
-        article_no=ArticleNo(jo=hit.jo, ui=hit.ui, hang=None, ho=None),
+        article_no=ArticleNo.model_validate(
+            {"조": hit.jo, "의": hit.ui, "항": None, "호": None}
+        ),
         heading_level=article_level,
         heading_text=heading_text,
         content=content,

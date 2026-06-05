@@ -43,7 +43,9 @@ def parse_article_query(q: str) -> ArticleNo:
         raise ParserError(f"cannot parse article query: {q!r}")
 
     ui = m.group("ui1") or m.group("ui2")
-    return ArticleNo(jo=m.group("jo"), ui=ui, hang=None, ho=None)
+    return ArticleNo.model_validate(
+        {"조": m.group("jo"), "의": ui, "항": None, "호": None}
+    )
 
 
 __all__ = ["parse_article_query"]

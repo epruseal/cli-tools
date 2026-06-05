@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
 import httpx
 import pytest
 
 from legalize_cli.http import GitHubClient
-from legalize_cli.rate_limit import RateLimit
 from legalize_cli.search.tree_filter import tree_filter_items
 from legalize_cli.util.errors import LegalizeError
 

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## [0.3.2] — 2026-06-05
+
+### Fixed
+
+- MCP `laws_get` 응답에서 법령 frontmatter의 `공포일자`/`시행일자`가
+  `datetime.date` 객체로 남아 JSON 직렬화에 실패하던 문제를 수정했습니다.
+
+### Changed
+
+- `ruff check .`와 `pyright .`가 로컬 개발 환경에서 그대로 통과하도록
+  미사용 import와 pyright 설정을 정리했습니다.
+
 ## [0.3.1] — 2026-05-08
 
 ### Fixed
