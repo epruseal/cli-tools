@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,7 +7,8 @@ name = "legalize-cli"
 version = "0.3.2"
 description = "CLI and MCP tools for querying Korean legal data mirrored by legalize-kr."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 requires-python = ">=3.10"
 authors = [
     { name = "Junghwan Park" },
@@ -18,7 +19,6 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Legal Industry",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: Korean",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -63,7 +63,8 @@ include = [
     "/src",
     "/tests",
     "/README.md",
-    "/LICENSE",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
 ]
 
 [tool.pytest.ini_options]
