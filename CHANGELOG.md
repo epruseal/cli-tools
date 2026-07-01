@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## [0.3.3] — 2026-07-01
+
+### Changed
+
+- MIT 단일 라이선스를 `MIT OR Apache-2.0` 듀얼 라이선스로 변경했습니다.
+  `LICENSE`를 `LICENSE-MIT`와 `LICENSE-APACHE`로 나누고, `pyproject.toml`
+  메타데이터를 PEP 639 SPDX 표현식(`license`, `license-files`)으로 전환했습니다.
+
 ## [0.3.2] — 2026-06-05
 
 ### Fixed
