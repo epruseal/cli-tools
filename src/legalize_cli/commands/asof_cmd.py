@@ -8,16 +8,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional, cast
 
 import typer
 
-from ..github.contents import get_file_raw
-from ..laws.asof import candidates_for_semantic, resolve_as_of
+from ..laws.asof import Semantic
 from ..laws.frontmatter import parse as parse_frontmatter
 from ..laws.list import enumerate_laws
-from ..laws.revisions import get_revisions
-from ..laws.status import filter_by_status
+from ..laws.lookup import resolve_law_file_as_of
 from ..util.cli_common import (
     build_global_opts,
     emit_json,
@@ -47,7 +45,7 @@ def as_of_cmd(
     cache_dir: Optional[Path] = typer.Option(None, "--cache-dir"),
     offline: bool = typer.Option(False, "--offline"),
 ) -> None:
-    """List laws current as of a given date."""
+    """List law files selected as of a given date."""
     if semantic not in ("공포일자", "시행일자"):
         raise typer.BadParameter("--semantic must be 공포일자 or 시행일자")
 
@@ -73,19 +71,22 @@ def as_of_cmd(
             limit=limit,
         )
 
-        laws = filter_by_status(client, laws, include_repealed=include_repealed)
-
         for entry in laws:
-            commits = get_revisions(client, cache, entry.path)
-            chosen = resolve_as_of(commits, target, semantic=semantic)
-            if chosen is None:
+            resolved = resolve_law_file_as_of(
+                client, cache, entry.path, target, cast(Semantic, semantic)
+            )
+            if resolved is None:
+                continue
+            if not include_repealed and resolved.resolution.frontmatter.status == "폐지":
                 continue
             results.append(
                 {
                     "name": entry.name,
                     "category": entry.category,
                     "path": entry.path,
-                    "resolved_commit_date": chosen.author_date.date().isoformat(),
+                    "resolved_version_date": resolved.resolution.semantic_date.isoformat(),
+                    "resolved_commit_date": resolved.resolution.commit.author_date.date().isoformat(),
+                    "resolved_commit_sha": resolved.resolution.commit.sha,
                 }
             )
     except LegalizeError as exc:
@@ -106,7 +107,7 @@ def as_of_cmd(
         return
 
     for row in results:
-        typer.echo(f"{row['category']:<12}  {row['name']:<28}  {row['resolved_commit_date']}")
+        typer.echo(f"{row['category']:<12}  {row['name']:<28}  {row['resolved_version_date']}")
     typer.echo(f"(total={len(results)} as-of {target.isoformat()} ({semantic}))")
 
 
@@ -133,38 +134,43 @@ def get_law_cmd(
     client, cache = make_client(opts)
 
     try:
-        commits = get_revisions(client, cache, path)
-        if not commits:
-            raise NotFoundError(f"no revisions found for {path}")
-        chosen = resolve_as_of(commits, target, semantic=semantic)
-        if chosen is None:
+        resolved = resolve_law_file_as_of(
+            client, cache, path, target, cast(Semantic, semantic)
+        )
+        if resolved is None:
             raise NotFoundError(
-                f"no commit at or before {target.isoformat()} for {path}"
+                f"no {semantic} revision at or before {target.isoformat()} for {path}"
             )
-        body = get_file_raw(client, "legalize-kr", "legalize-kr", path, ref=chosen.sha)
     except LegalizeError as exc:
         raise handle_domain_error(exc) from exc
     finally:
         client.close()
 
-    text = body.decode("utf-8", errors="replace")
+    text = resolved.raw.decode("utf-8", errors="replace")
+    fm, md_body = parse_frontmatter(text)
+    warning = _file_scope_warning(semantic, target, fm.enforcement_date)
 
     if json_output:
-        fm, md_body = parse_frontmatter(text)
-        emit_json(
-            {
-                "law": law_name,
-                "category": category,
-                "requested_date": target.isoformat(),
-                "resolved_commit_date": chosen.author_date.date().isoformat(),
-                "path": path,
-                "frontmatter": fm.model_dump(by_alias=True, exclude_none=True),
-                "body": md_body,
-            },
-            kind="laws.get",
-        )
+        payload = {
+            "law": law_name,
+            "category": category,
+            "semantic": semantic,
+            "requested_date": target.isoformat(),
+            "resolved_version_date": resolved.resolution.semantic_date.isoformat(),
+            "resolved_commit_date": resolved.resolution.commit.author_date.date().isoformat(),
+            "resolved_commit_sha": resolved.resolution.commit.sha,
+            "path": path,
+            "frontmatter": fm.model_dump(by_alias=True, exclude_none=True),
+            "file_effective_date_only": True,
+            "body": md_body,
+        }
+        if warning is not None:
+            payload["warning"] = warning
+        emit_json(payload, kind="laws.get")
         return
 
+    if warning is not None:
+        typer.echo(f"warning: {warning}", err=True)
     typer.echo(text)
 
 
@@ -180,6 +186,17 @@ def _parse_date(raw: Optional[str]) -> date:
         raise typer.BadParameter(f"--date must be YYYY-MM-DD ({exc})") from exc
 
 
+def _file_scope_warning(
+    semantic: str, target: date, enforcement_date: Optional[date]
+) -> Optional[str]:
+    if semantic == "공포일자" and enforcement_date is not None and target < enforcement_date:
+        return (
+            "선택한 공포일자 버전은 기준일에 아직 시행 전입니다. "
+            "시행 중인 파일 버전은 --semantic 시행일자로 조회하세요."
+        )
+    return None
+
+
 def _preflight_budget(
     client,
     *,
@@ -193,7 +210,8 @@ def _preflight_budget(
 
     Refuses if (a) no token AND candidates > default_limit AND user did not
     pass --limit or --yes-exhaust-quota, OR (b) remaining quota is insufficient
-    for ``2 × candidates`` worst-case (commits + contents fetches).
+    for the minimum ``2 × candidates`` request estimate. ``시행일자`` can read
+    more candidate frontmatters, so its actual request count may be higher.
     """
     if not token_present and candidates > default_limit and not yes_exhaust and limit is None:
         raise LegalizeError(
@@ -214,9 +232,3 @@ def _preflight_budget(
 
 
 __all__ = ["as_of_cmd", "get_law_cmd"]
-
-
-# Unused imports kept for API parity (``candidates_for_semantic`` is the entry
-# point for a future frontmatter-aware 시행일자 scan).
-_ = candidates_for_semantic
-_ = List

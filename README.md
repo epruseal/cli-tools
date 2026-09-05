@@ -96,8 +96,10 @@ GitHub API는 인증 없이 **시간당 60회** 요청만 허용합니다. 토�
 | 명령 | 소비 요청 수 (콜드) |
 |------|---------------------|
 | `laws list` | 1회 (이후 1시간 캐시) |
-| `laws get <name> --date D` | 2회 (커밋 조회 + 파일 조회) |
-| `laws diff A B` | 4회 (as-of 해석 2회 × 2) |
+| `laws get <name> --date D --semantic 공포일자` | 2회 (커밋 조회 + 파일 조회) |
+| `laws get <name> --semantic 시행일자` | 2회 이상 (커밋 조회 + 후보 개정본 frontmatter 조회) |
+| `laws diff A B --semantic 공포일자` | 4회 (as-of 해석 2회 × 2) |
+| `laws diff A B --semantic 시행일자` | 4회 이상 (각 시점의 후보 개정본 frontmatter 조회) |
 | `search --heavy-content-scan` | 최대 N회 (후보 수만큼); 토큰 없으면 `--yes-exhaust-quota` 필요 |
 
 ### 토큰 발급 방법
@@ -207,8 +209,8 @@ pip install 'legalize-cli[mcp]'
 | Tool | 설명 |
 |------|------|
 | `laws_list` | 법령 목록 조회 (카테고리·페이지 필터) |
-| `laws_get` | 법령 전문 조회 (날짜 기준) |
-| `laws_article` | 특정 조문 조회 (제839조 등) |
+| `laws_get` | 법령 전문 조회 (공포일자 또는 시행일자 기준) |
+| `laws_article` | 특정 조문 조회 (제839조 등, 공포일자 또는 시행일자 기준) |
 | `search` | 법령·판례·행정규칙·자치법규 키워드 검색 |
 | `precedents_list` | 판례 목록 조회 (법원·사건종류 필터) |
 | `precedents_get` | 판례 전문 조회 (사건번호·판례일련번호) |
@@ -329,6 +331,23 @@ GitHub CLI가 없다면 직접 발급합니다:
 
 ## 명령 레퍼런스
 
+### 날짜 기준 선택
+
+`laws as-of`, `laws get`, `laws article`, `laws diff`와 MCP `laws_get`, `laws_article`은
+`공포일자`와 `시행일자`를 모두 지원합니다. `semantic` 또는 `--semantic`의 기본값은
+기존 동작과 호환되는 `공포일자`입니다.
+
+- `공포일자`: 그 날짜까지 공포된 최신 파일 버전을 선택합니다. 선택한 파일의 시행일이
+  더 뒤라면 JSON 응답의 `warning`으로 시행 전임을 알립니다.
+- `시행일자`: 각 개정 파일 frontmatter의 `시행일자`가 기준일 이하인 최신 파일 버전을
+  선택합니다. 시행일자가 공포일자보다 늦은 개정은 시행 전에는 선택되지 않습니다.
+
+이 선택은 파일 단위입니다. 하나의 공포본 안에서 조문별 시행일이 다르거나 부칙의
+적용례·경과조치가 있는 경우에는 개별 조문의 실제 적용 여부를 판정하지 않습니다.
+`laws get`, `laws article`, MCP `laws_get`, MCP `laws_article`의
+`file_effective_date_only: true`는 이 한계를 명시합니다. 1970년 이전 공포본은 Git 날짜가 1970-01-01로 보정되어 있으므로,
+해당 날짜 조회에서는 frontmatter의 실제 공포일자 또는 시행일자를 사용합니다.
+
 ### `laws list` — 법령 목록 조회
 
 ```bash
@@ -339,7 +358,7 @@ JSON 응답: `{"schema_version": "1.0", "kind": "laws.list", "total": N, "items"
 
 ### `laws as-of` — 특정 시점 기준 법령 목록
 
-특정 날짜 기준으로 유효한 법령을 나열합니다 (기본값: 오늘, KST).
+특정 날짜에 선택되는 법령 파일을 나열합니다 (기본값: 오늘, KST).
 
 ```bash
 legalize laws as-of [--date YYYY-MM-DD] [--category 법률|...] [--include-repealed] [--semantic 공포일자|시행일자] [--json]
@@ -348,28 +367,31 @@ legalize laws as-of [--date YYYY-MM-DD] [--category 법률|...] [--include-repea
 ### `laws get` — 법령 전문 조회
 
 ```bash
-legalize laws get <법령명> [--category 법률|시행령|...] [--date YYYY-MM-DD] [--json]
+legalize laws get <법령명> [--category 법률|시행령|...] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--json]
 ```
 
-JSON 응답: `{"schema_version": "1.0", "kind": "laws.get", "law", "resolved_commit_date", "frontmatter", "body"}`
+JSON 응답: `{"schema_version": "1.0", "kind": "laws.get", "law", "semantic", "requested_date", "resolved_version_date", "resolved_commit_date", "resolved_commit_sha", "file_effective_date_only", "frontmatter", "body"}`
 
 ### `laws article` — 특정 조문 조회
 
 ```bash
-legalize laws article <법령명> <조문번호> [--category X] [--date YYYY-MM-DD] [--json]
+legalize laws article <법령명> <조문번호> [--category X] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--json]
 ```
 
 조문번호 형식 모두 허용: `제839조`, `839`, `839조의2`, `839-2`, `제839조의2`
 
-JSON 응답: `{"schema_version": "1.0", "kind": "laws.article", "article_no": {"조": "839", "의": "2", "항": null, "호": null}, "status", "annotations", "content", "parent_structure"}`
+JSON 응답: `{"schema_version": "1.0", "kind": "laws.article", "semantic", "requested_date", "resolved_version_date", "공포일자", "시행일자", "출처", "법령ID", "법령MST", "file_effective_date_only", "article_no", "status", "annotations", "content", "parent_structure"}`. `status`는 삭제 조문 여부이며, 시행 여부 판정은 아닙니다.
 
 ### `laws diff` — 두 버전 비교
 
 주로 동일 법령의 시점 간 변경을 비교합니다.
 
 ```bash
-legalize laws diff <법령-a> <법령-b> [--date-a D] [--date-b D] [--mode unified|side-by-side|article] [--json]
+legalize laws diff <법령-a> <법령-b> [--date-a D] [--date-b D] [--semantic 공포일자|시행일자] [--mode unified|side-by-side|article] [--json]
 ```
+
+JSON 응답의 `a`와 `b`에는 각각 `semantic`, `resolved_version_date`,
+`resolved_commit_date`, `resolved_commit_sha`가 포함됩니다.
 
 article 모드 상태값: `modified | added | removed | renamed | whitespace-only`
 
@@ -495,7 +517,17 @@ legalize laws as-of --date 2020-01-01 --semantic 시행일자 --category 법률 
   jq '.items | length'
 ```
 
-### 예시 7: 오프라인 모드 (네트워크 없이 캐시 조회)
+### 예시 7: 공포 후 시행 전과 시행일 기준 선택
+
+```bash
+# 2026-03-01 공포, 2026-07-01 시행 파일을 2026-04-01에 확인하면 warning이 포함됩니다.
+legalize laws article 예시법 1 --date 2026-04-01 --semantic 공포일자 --json
+
+# 그 날짜에 시행 중인 파일 버전을 선택합니다.
+legalize laws article 예시법 1 --date 2026-04-01 --semantic 시행일자 --json
+```
+
+### 예시 8: 오프라인 모드 (네트워크 없이 캐시 조회)
 
 ```bash
 # 캐시된 데이터만 사용 (네트워크 차단 환경에서 유용)
@@ -503,7 +535,7 @@ legalize laws get 민법 --offline
 legalize search "손해배상" --in precedents --offline --json
 ```
 
-### 예시 8: 판례 전문 조회
+### 예시 9: 판례 전문 조회
 
 ```bash
 # 대법원 판례 목록에서 민사 판례 5개 확인
@@ -513,14 +545,14 @@ legalize precedents list --court 대법원 --type 민사 --page-size 5 --json
 legalize precedents get "2022다12345" --json
 ```
 
-### 예시 9: 행정규칙·자치법규 조회
+### 예시 10: 행정규칙·자치법규 조회
 
 ```bash
 legalize admrules list --agency 행정안전부 --type 고시 --page-size 5 --json
 legalize ordinances get "서울특별시 테스트 조례" --type 조례 --jurisdiction 서울특별시 --json
 ```
 
-### 예시 10: CI/CD에서 사용 (GitHub Actions)
+### 예시 11: CI/CD에서 사용 (GitHub Actions)
 
 ```yaml
 # .github/workflows/law-check.yml
@@ -531,7 +563,7 @@ legalize ordinances get "서울특별시 테스트 조례" --type 조례 --juris
     uvx legalize-cli laws get 개인정보보호법 --json > current-law.json
 ```
 
-### 예시 11: 캐시 워밍 (대량 조회 전 준비)
+### 예시 12: 캐시 워밍 (대량 조회 전 준비)
 
 ```bash
 # 자주 사용하는 법령 미리 캐시

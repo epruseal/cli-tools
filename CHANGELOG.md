@@ -1,6 +1,34 @@
 # Changelog
 
-## Unreleased
+## [0.4.0] — 2026-09-05
+
+### Breaking Changes
+
+- 기존 `laws as-of`, `laws get`의 `--semantic 시행일자`와 대응 MCP 호출은
+  공포일자 결과로 조용히 폴백했습니다. 이제 파일 frontmatter의 시행일자를 기준으로
+  실제 선택하므로, 같은 요청이 다른 개정본을 반환할 수 있습니다. 기존 공포일자 선택이
+  필요한 자동화는 `--semantic 공포일자` 또는 `semantic="공포일자"`를 명시하세요.
+- Python API `resolve_as_of(..., semantic="시행일자")`는 더 이상 공포일자 결과를
+  반환하지 않고 오류를 냅니다. frontmatter를 제공하는
+  `resolve_as_of_with_frontmatter()`를 사용해야 합니다.
+
+### Added
+
+- `laws as-of`, `laws get`, `laws article`, `laws diff`와 MCP `laws_get`, `laws_article`이
+  `공포일자`와 `시행일자` 기준을 모두 지원합니다. `시행일자`는 각 개정 파일의
+  frontmatter를 읽어 실제로 선택하며, 더 이상 공포일자 선택으로 폴백하지 않습니다.
+- MCP와 CLI JSON 응답에 `semantic`, `requested_date`, `resolved_version_date`,
+  선택 commit SHA를 추가했습니다. `laws_article`은 공포일자, 시행일자, 출처,
+  법령ID, 법령MST도 한 번에 반환합니다.
+- 1970년 이전 날짜 조회에서는 Git의 epoch 보정 날짜 대신 frontmatter의 실제
+  공포일자 또는 시행일자를 사용합니다.
+
+### Changed
+
+- 기본 `semantic`은 `공포일자`로 유지됩니다. 시행일자 선택은 파일 단위이며 조문별
+  시행일, 부칙의 적용례와 경과조치는 판정하지 않습니다.
+- `legalize-cli[mcp]`가 FastMCP 기반 서버와 호환되는 MCP SDK 1.x를 설치하도록
+  `mcp<2` 상한을 명시했습니다.
 
 ## [0.3.3] — 2026-07-01
 

@@ -12,7 +12,12 @@ from datetime import date, timedelta, timezone
 from typing import List
 
 from legalize_cli.github.commits import CommitInfo
-from legalize_cli.laws.asof import candidates_for_semantic, resolve_as_of
+from legalize_cli.laws.asof import (
+    candidates_for_semantic,
+    resolve_as_of,
+    resolve_as_of_with_frontmatter,
+)
+from legalize_cli.laws.model import Frontmatter
 
 _KST = timezone(timedelta(hours=9))
 
@@ -98,15 +103,92 @@ def test_candidates_for_semantic_returns_list() -> None:
         _c("cc", "2022-01-01T12:00:00+09:00"),
     ]
     result = candidates_for_semantic(commits, date(2020, 12, 31))
-    shas = {c.sha for c in result}
-    assert shas == {"aa", "bb"}
+    assert [c.sha for c in result] == ["bb", "aa"]
 
 
-def test_시행일자_falls_back_to_공포일자_stub() -> None:
-    """Without per-candidate frontmatter, 시행일자 mode reuses 공포일자 logic."""
+def test_시행일자_requires_frontmatter_instead_of_falling_back() -> None:
     commits = [
         _c("aa", "2017-01-01T12:00:00+09:00"),
         _c("bb", "2020-01-01T12:00:00+09:00"),
     ]
-    chosen = resolve_as_of(commits, date(2021, 1, 1), semantic="시행일자")
-    assert chosen is not None and chosen.sha == "bb"
+    import pytest
+
+    with pytest.raises(ValueError, match="frontmatter"):
+        resolve_as_of(commits, date(2021, 1, 1), semantic="시행일자")
+
+
+def test_시행일자_uses_frontmatter_not_promulgation_date() -> None:
+    commits = [
+        _c("new", "2026-03-01T12:00:00+09:00"),
+        _c("old", "2025-01-01T12:00:00+09:00"),
+    ]
+    frontmatters = {
+        "new": Frontmatter.model_validate(
+            {"공포일자": "2026-03-01", "시행일자": "2026-07-01"}
+        ),
+        "old": Frontmatter.model_validate(
+            {"공포일자": "2025-01-01", "시행일자": "2025-01-01"}
+        ),
+    }
+
+    resolved = resolve_as_of_with_frontmatter(
+        commits,
+        date(2026, 4, 1),
+        "시행일자",
+        lambda commit: frontmatters[commit.sha],
+    )
+
+    assert resolved is not None
+    assert resolved.commit.sha == "old"
+    assert resolved.semantic_date == date(2025, 1, 1)
+
+
+def test_공포일자_uses_frontmatter_when_git_date_and_source_date_disagree() -> None:
+    commits = [
+        _c("new", "2026-03-01T12:00:00+09:00"),
+        _c("old", "2025-01-01T12:00:00+09:00"),
+    ]
+    frontmatters = {
+        "new": Frontmatter.model_validate(
+            {"공포일자": "2026-05-01", "시행일자": "2026-07-01"}
+        ),
+        "old": Frontmatter.model_validate(
+            {"공포일자": "2025-01-01", "시행일자": "2025-01-01"}
+        ),
+    }
+
+    resolved = resolve_as_of_with_frontmatter(
+        commits,
+        date(2026, 4, 1),
+        "공포일자",
+        lambda commit: frontmatters[commit.sha],
+    )
+
+    assert resolved is not None
+    assert resolved.commit.sha == "old"
+
+
+def test_pre_1970_uses_frontmatter_promulgation_date() -> None:
+    commits = [
+        _c("new", "1970-01-01T12:00:00+09:00"),
+        _c("old", "1970-01-01T12:00:00+09:00"),
+    ]
+    frontmatters = {
+        "new": Frontmatter.model_validate(
+            {"공포일자": "1960-01-01", "시행일자": "1960-01-01"}
+        ),
+        "old": Frontmatter.model_validate(
+            {"공포일자": "1958-02-22", "시행일자": "1960-01-01"}
+        ),
+    }
+
+    resolved = resolve_as_of_with_frontmatter(
+        commits,
+        date(1959, 1, 1),
+        "공포일자",
+        lambda commit: frontmatters[commit.sha],
+    )
+
+    assert resolved is not None
+    assert resolved.commit.sha == "old"
+    assert resolved.semantic_date == date(1958, 2, 22)

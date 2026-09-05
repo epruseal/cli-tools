@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -34,13 +34,11 @@ from .documents import (
     fetch_document_by_name_or_path,
     filter_and_paginate_documents,
 )
-from .github.contents import get_file_raw
 from .http import GitHubClient
 from .laws.articles import parse_articles
-from .laws.asof import resolve_as_of
 from .laws.frontmatter import parse as parse_frontmatter
 from .laws.list import enumerate_laws, filter_and_paginate
-from .laws.revisions import get_revisions
+from .laws.lookup import resolve_law_file_as_of
 from .precedents.enumerate import enumerate_precedents
 from .precedents.fetch import fetch_by_id_or_path
 from .precedents.list import list_precedents
@@ -69,6 +67,17 @@ def _date_or_today(raw: Optional[str]) -> date:
     if raw is None:
         return datetime.now(timezone.utc).astimezone().date()
     return date.fromisoformat(raw)
+
+
+def _file_scope_warning(
+    *, semantic: str, target: date, enforcement_date: Optional[date]
+) -> Optional[str]:
+    if semantic == "공포일자" and enforcement_date is not None and target < enforcement_date:
+        return (
+            "선택한 공포일자 버전은 기준일에 아직 시행 전입니다. "
+            "시행 중인 파일 버전은 semantic='시행일자'로 조회하세요."
+        )
+    return None
 
 
 @mcp.tool()
@@ -112,53 +121,61 @@ def laws_get(
     law_name: str,
     category: str = "법률",
     date: Optional[str] = None,
+    semantic: Literal["공포일자", "시행일자"] = "공포일자",
 ) -> str:
     """법령 전문(全文)을 마크다운으로 조회합니다.
 
     Args:
         law_name: 법령명 (예: 민법, 형법, 근로기준법)
         category: 법령 종류 (법률|시행령|시행규칙|대통령령). 기본값: 법률
-        date: 기준 날짜 YYYY-MM-DD. 생략 시 오늘 기준 최신본
+        date: 기준 날짜 YYYY-MM-DD. 생략 시 오늘 기준 최신본. 기본 semantic인
+            공포일자에서는 이 날짜까지 공포된 파일 버전을 선택합니다.
+        semantic: date가 선택할 파일 버전의 기준 (공포일자|시행일자).
+            기본값 공포일자는 기존 동작과 호환됩니다. 시행일자는 파일 frontmatter의
+            시행일자를 기준으로 선택하며, 조문별 분리 시행일은 판정하지 않습니다.
     """
     target = _date_or_today(date)
     path = f"kr/{law_name}/{category}.md"
 
     client, cache = _make_client()
     try:
-        commits = get_revisions(client, cache, path)
-        if not commits:
+        resolved = resolve_law_file_as_of(client, cache, path, target, semantic)
+        if resolved is None:
             return json.dumps(
-                {"error": f"{path} 에 해당하는 개정 이력이 없습니다."},
+                {"error": f"{target.isoformat()} 기준 {semantic} 버전을 찾을 수 없습니다: {path}"},
                 ensure_ascii=False,
             )
-        chosen = resolve_as_of(commits, target)
-        if chosen is None:
-            return json.dumps(
-                {"error": f"{target.isoformat()} 이전 커밋을 찾을 수 없습니다: {path}"},
-                ensure_ascii=False,
-            )
-        body = get_file_raw(client, OWNER, "legalize-kr", path, ref=chosen.sha)
     except LegalizeError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
     finally:
         client.close()
 
-    text = body.decode("utf-8", errors="replace")
+    text = resolved.raw.decode("utf-8", errors="replace")
     fm, md_body = parse_frontmatter(text)
+    warning = _file_scope_warning(
+        semantic=semantic, target=target, enforcement_date=fm.enforcement_date
+    )
+    payload = {
+        "schema_version": "1.0",
+        "kind": "laws.get",
+        "law": law_name,
+        "category": category,
+        "semantic": semantic,
+        "requested_date": target.isoformat(),
+        "resolved_version_date": resolved.resolution.semantic_date.isoformat(),
+        "resolved_commit_date": resolved.resolution.commit.author_date.date().isoformat(),
+        "resolved_commit_sha": resolved.resolution.commit.sha,
+        "path": path,
+        "frontmatter": fm.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        ),
+        "file_effective_date_only": True,
+        "body": md_body,
+    }
+    if warning is not None:
+        payload["warning"] = warning
     return json.dumps(
-        {
-            "schema_version": "1.0",
-            "kind": "laws.get",
-            "law": law_name,
-            "category": category,
-            "requested_date": target.isoformat(),
-            "resolved_commit_date": chosen.author_date.date().isoformat(),
-            "path": path,
-            "frontmatter": fm.model_dump(
-                mode="json", by_alias=True, exclude_none=True
-            ),
-            "body": md_body,
-        },
+        payload,
         ensure_ascii=False,
     )
 
@@ -169,6 +186,7 @@ def laws_article(
     article_no: str,
     category: str = "법률",
     date: Optional[str] = None,
+    semantic: Literal["공포일자", "시행일자"] = "공포일자",
 ) -> str:
     """법령의 특정 조문을 조회합니다.
 
@@ -176,7 +194,11 @@ def laws_article(
         law_name: 법령명 (예: 민법)
         article_no: 조문 번호 (제839조, 839, 839조의2, 839-2 등 형식 모두 허용)
         category: 법령 종류 (법률|시행령|시행규칙|대통령령). 기본값: 법률
-        date: 기준 날짜 YYYY-MM-DD. 생략 시 오늘 기준 최신본
+        date: 기준 날짜 YYYY-MM-DD. 생략 시 오늘 기준 최신본. 기본 semantic인
+            공포일자에서는 이 날짜까지 공포된 파일 버전을 선택합니다.
+        semantic: date가 선택할 파일 버전의 기준 (공포일자|시행일자).
+            기본값 공포일자는 기존 동작과 호환됩니다. 시행일자는 파일 frontmatter의
+            시행일자를 기준으로 선택하며, 조문별 분리 시행일은 판정하지 않습니다.
     """
     try:
         query = parse_article_query(article_no)
@@ -188,26 +210,19 @@ def laws_article(
 
     client, cache = _make_client()
     try:
-        commits = get_revisions(client, cache, path)
-        if not commits:
+        resolved = resolve_law_file_as_of(client, cache, path, target, semantic)
+        if resolved is None:
             return json.dumps(
-                {"error": f"{path} 에 해당하는 개정 이력이 없습니다."},
+                {"error": f"{target.isoformat()} 기준 {semantic} 버전을 찾을 수 없습니다: {path}"},
                 ensure_ascii=False,
             )
-        chosen = resolve_as_of(commits, target)
-        if chosen is None:
-            return json.dumps(
-                {"error": f"{target.isoformat()} 이전 커밋을 찾을 수 없습니다: {path}"},
-                ensure_ascii=False,
-            )
-        body = get_file_raw(client, OWNER, "legalize-kr", path, ref=chosen.sha)
     except LegalizeError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
     finally:
         client.close()
 
-    text = body.decode("utf-8", errors="replace")
-    _fm, md_body = parse_frontmatter(text)
+    text = resolved.raw.decode("utf-8", errors="replace")
+    fm, md_body = parse_frontmatter(text)
     articles = parse_articles(md_body)
 
     match = next(
@@ -231,22 +246,35 @@ def laws_article(
             ensure_ascii=False,
         )
 
-    return json.dumps(
-        {
-            "schema_version": "1.0",
-            "kind": "laws.article",
-            "law": law_name,
-            "category": category,
-            "article_no": match.article_no.model_dump(by_alias=True),
-            "status": match.status,
-            "annotations": match.annotations,
-            "resolved_commit_date": chosen.author_date.date().isoformat(),
-            "path": path,
-            "content": match.content,
-            "parent_structure": match.parent_structure,
-        },
-        ensure_ascii=False,
+    payload = {
+        "schema_version": "1.0",
+        "kind": "laws.article",
+        "law": law_name,
+        "category": category,
+        "semantic": semantic,
+        "requested_date": target.isoformat(),
+        "resolved_version_date": resolved.resolution.semantic_date.isoformat(),
+        "resolved_commit_date": resolved.resolution.commit.author_date.date().isoformat(),
+        "resolved_commit_sha": resolved.resolution.commit.sha,
+        "공포일자": fm.promulgation_date.isoformat() if fm.promulgation_date else None,
+        "시행일자": fm.enforcement_date.isoformat() if fm.enforcement_date else None,
+        "출처": fm.source,
+        "법령ID": fm.law_id,
+        "법령MST": fm.law_mst,
+        "file_effective_date_only": True,
+        "article_no": match.article_no.model_dump(by_alias=True),
+        "status": match.status,
+        "annotations": match.annotations,
+        "path": path,
+        "content": match.content,
+        "parent_structure": match.parent_structure,
+    }
+    warning = _file_scope_warning(
+        semantic=semantic, target=target, enforcement_date=fm.enforcement_date
     )
+    if warning is not None:
+        payload["warning"] = warning
+    return json.dumps(payload, ensure_ascii=False)
 
 
 @mcp.tool()

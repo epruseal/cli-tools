@@ -5,16 +5,15 @@ from __future__ import annotations
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import typer
 
-from ..github.contents import get_file_raw
 from ..laws.articles import parse_articles
-from ..laws.asof import resolve_as_of
+from ..laws.asof import Semantic
 from ..laws.diff import diff_laws
 from ..laws.frontmatter import parse as parse_frontmatter
-from ..laws.revisions import get_revisions
+from ..laws.lookup import ResolvedLawFile, resolve_law_file_as_of
 from ..util.cli_common import (
     build_global_opts,
     emit_json,
@@ -33,6 +32,7 @@ def diff_cmd(
     date_b: Optional[str] = typer.Option(None, "--date-b"),
     category_a: str = typer.Option("법률", "--category-a"),
     category_b: str = typer.Option("법률", "--category-b"),
+    semantic: str = typer.Option("공포일자", "--semantic"),
     mode: str = typer.Option("article", "--mode"),
     show_unchanged: bool = typer.Option(False, "--show-unchanged"),
     suppress_cross_warning: bool = typer.Option(
@@ -47,6 +47,8 @@ def diff_cmd(
     """Diff two law revisions — primarily same-law time diff."""
     if mode not in ("unified", "side-by-side", "article"):
         raise typer.BadParameter("--mode must be unified|side-by-side|article")
+    if semantic not in ("공포일자", "시행일자"):
+        raise typer.BadParameter("--semantic must be 공포일자 or 시행일자")
 
     if law_a != law_b and not suppress_cross_warning:
         sys.stderr.write(
@@ -64,15 +66,19 @@ def diff_cmd(
         path_a = f"kr/{law_a}/{category_a}.md"
         path_b = f"kr/{law_b}/{category_b}.md"
 
-        resolved_a, body_a = _resolve_body(client, cache, path_a, target_a)
-        resolved_b, body_b = _resolve_body(client, cache, path_b, target_b)
+        resolved_a = _resolve_body(
+            client, cache, path_a, target_a, cast(Semantic, semantic)
+        )
+        resolved_b = _resolve_body(
+            client, cache, path_b, target_b, cast(Semantic, semantic)
+        )
     except LegalizeError as exc:
         raise handle_domain_error(exc) from exc
     finally:
         client.close()
 
-    _fm_a, md_body_a = parse_frontmatter(body_a.decode("utf-8", errors="replace"))
-    _fm_b, md_body_b = parse_frontmatter(body_b.decode("utf-8", errors="replace"))
+    _fm_a, md_body_a = parse_frontmatter(resolved_a.raw.decode("utf-8", errors="replace"))
+    _fm_b, md_body_b = parse_frontmatter(resolved_b.raw.decode("utf-8", errors="replace"))
     articles_a = parse_articles(md_body_a) if mode == "article" else []
     articles_b = parse_articles(md_body_b) if mode == "article" else []
 
@@ -92,13 +98,19 @@ def diff_cmd(
                     "law": law_a,
                     "category": category_a,
                     "date": target_a.isoformat(),
-                    "resolved_commit_date": resolved_a.isoformat(),
+                    "semantic": semantic,
+                    "resolved_version_date": resolved_a.resolution.semantic_date.isoformat(),
+                    "resolved_commit_date": resolved_a.resolution.commit.author_date.date().isoformat(),
+                    "resolved_commit_sha": resolved_a.resolution.commit.sha,
                 },
                 "b": {
                     "law": law_b,
                     "category": category_b,
                     "date": target_b.isoformat(),
-                    "resolved_commit_date": resolved_b.isoformat(),
+                    "semantic": semantic,
+                    "resolved_version_date": resolved_b.resolution.semantic_date.isoformat(),
+                    "resolved_commit_date": resolved_b.resolution.commit.author_date.date().isoformat(),
+                    "resolved_commit_sha": resolved_b.resolution.commit.sha,
                 },
                 "mode": mode,
                 "changes": [
@@ -130,15 +142,13 @@ def diff_cmd(
 # ---- helpers ----------------------------------------------------------
 
 
-def _resolve_body(client, cache, path: str, target: date):
-    commits = get_revisions(client, cache, path)
-    if not commits:
-        raise NotFoundError(f"no revisions for {path}")
-    chosen = resolve_as_of(commits, target)
-    if chosen is None:
-        raise NotFoundError(f"no commit at or before {target.isoformat()} for {path}")
-    body = get_file_raw(client, "legalize-kr", "legalize-kr", path, ref=chosen.sha)
-    return chosen.author_date.date(), body
+def _resolve_body(
+    client, cache, path: str, target: date, semantic: Semantic
+) -> ResolvedLawFile:
+    resolved = resolve_law_file_as_of(client, cache, path, target, semantic)
+    if resolved is None:
+        raise NotFoundError(f"no {semantic} revision at or before {target.isoformat()} for {path}")
+    return resolved
 
 
 def _parse_date(raw: Optional[str]) -> date:
