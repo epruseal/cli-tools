@@ -150,22 +150,21 @@ def _filter_documents(
     parent0: Optional[str],
     parent1: Optional[str],
 ) -> List[TreeDocumentEntry]:
-    filtered = list(items)
-    if category:
-        filtered = [entry for entry in filtered if entry.category == category]
-    if parent_contains:
-        filtered = [entry for entry in filtered if parent_contains in entry.parents]
-    if parent0:
-        filtered = [
-            entry for entry in filtered
-            if len(entry.parents) >= 1 and entry.parents[0] == parent0
-        ]
-    if parent1:
-        filtered = [
-            entry for entry in filtered
-            if len(entry.parents) >= 2 and entry.parents[1] == parent1
-        ]
-    return filtered
+    return [entry for entry in items if _matches_document(
+        entry, category=category, parent_contains=parent_contains,
+        parent0=parent0, parent1=parent1,
+    )]
+
+
+def _matches_document(entry: TreeDocumentEntry, *, category: Optional[str],
+                      parent_contains: Optional[str], parent0: Optional[str],
+                      parent1: Optional[str]) -> bool:
+    return not (
+        (category and entry.category != category)
+        or (parent_contains and parent_contains not in entry.parents)
+        or (parent0 and (len(entry.parents) < 1 or entry.parents[0] != parent0))
+        or (parent1 and (len(entry.parents) < 2 or entry.parents[1] != parent1))
+    )
 
 
 __all__ = [
