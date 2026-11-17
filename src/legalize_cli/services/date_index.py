@@ -356,6 +356,32 @@ def attach_bodies(index, rows):
     return rows
 
 
+def _cross_checks(items):
+    """The LLM cross-check disagreements of the returned items, once per revision copy (compiler#2 v3.5).
+
+    The compiler withdrew the parser date of these copies; both candidate dates are shown
+    (user decision B2). A selected item counts too: a promulgation-date lookup selects by
+    promulgation date whatever the status.
+    """
+    found, seen = [], set()
+    for item in items:
+        if item is None:
+            continue
+        check = item["occurrence"]["date_evidence"].get("llm_cross_check") or {}
+        if check.get("result") not in ("disagree", "copy-withheld"):
+            continue
+        key = (item["identity"], item["revision"], item["copy_id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append({"label": "LLM 교차 확인 불일치", "identity": item["identity"], "revision": item["revision"],
+                      "copy_id": item["copy_id"], "result": check.get("result"),
+                      "candidate_dates": check.get("candidate_dates"), "parser_rule": check.get("parser_rule"),
+                      "llm_outcome": check.get("llm_outcome"), "field": check.get("field"), "quote": check.get("quote"),
+                      "model": check.get("model"), "judged_at": check.get("judged_at")})
+    return found
+
+
 def select_date(index, target: date, semantic: str):
     target_string = target.isoformat()
     grouped = {}
@@ -399,6 +425,9 @@ def select_date(index, target: date, semantic: str):
                 judgment = chosen["occurrence"]["date_evidence"].get("llm_judgment") or {}
                 row["llm_judgment"] = {"label": "LLM 판단", "field": judgment.get("field"), "quote": judgment.get("quote"),
                                        "model": judgment.get("model"), "judged_at": judgment.get("judged_at")}
+            checks = _cross_checks([chosen, *group["candidates"], *group["undated"]])
+            if checks:
+                row["llm_cross_checks"] = checks
             results.append(row)
     return results
 

@@ -590,6 +590,73 @@ def test_an_llm_repeal_has_no_confirmed(tmp_path):
     assert (row["as_of_status"], row["confirmed"]) == ("repealed", None)
 
 
+def _cross(result, parser_date="1998-09-01", llm_date="2006-08-28"):
+    return {"llm_cross_check": {"result": result, "parser_rule": "approved clause in selected addendum",
+                                "llm_outcome": "explicit_date", "field": "부칙", "quote": "q", "model": "m",
+                                "judged_at": "t",
+                                "candidate_dates": [{"source": "parser", "date": parser_date, "status": "confirmed"},
+                                                    {"source": "llm", "date": llm_date}]}}
+
+
+def test_a_cross_check_disagreement_shows_both_candidates(tmp_path):
+    # compiler#2 v3.5: the unresolved candidate carries the parser date and the LLM date.
+    specs = [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01"),
+             spec("L", "B", "unresolved", p="2006-08-28", evidence=_cross("disagree"))]
+    _, index = _load(tmp_path, specs)
+    row = _lookup(index, "2007-01-01", "시행일자")
+    assert row["selected"]["revision"] == "A"
+    [check] = row["llm_cross_checks"]
+    assert (check["label"], check["revision"], check["result"]) == ("LLM 교차 확인 불일치", "B", "disagree")
+    assert [c["date"] for c in check["candidate_dates"]] == ["1998-09-01", "2006-08-28"]
+    assert "llm_cross_checks" not in _lookup(index, "2000-01-01", "시행일자")
+
+
+def test_an_undated_cross_check_disagreement_is_shown(tmp_path):
+    specs = [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01"),
+             spec("L", "B", "undated", semantics=["공포일자", "시행일자"], evidence=_cross("disagree"))]
+    _, index = _load(tmp_path, specs)
+    [check] = _lookup(index, "2007-01-01", "시행일자")["llm_cross_checks"]
+    assert check["revision"] == "B"
+
+
+def test_a_selected_cross_check_disagreement_is_shown_for_promulgation_dates(tmp_path):
+    # lead-c2-v35-round4-state-compare-20261117: a promulgation-date lookup can select the
+    # withdrawn revision; it shows both candidates whatever the status.
+    specs = [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01"),
+             spec("L", "B", "unresolved", p="2006-08-28", evidence=_cross("copy-withheld"))]
+    _, index = _load(tmp_path, specs)
+    row = _lookup(index, "2007-01-01", "공포일자")
+    assert row["selected"]["revision"] == "B"
+    [check] = row["llm_cross_checks"]
+    assert check["result"] == "copy-withheld"
+
+
+def test_a_revision_with_two_occurrences_is_shown_once(tmp_path):
+    fake = FakeGitHub()
+    specs = [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01"),
+             spec("L", "B", "unresolved", p="2006-08-28", evidence=_cross("disagree"))]
+    payload = build_index(fake, "laws", "enforcement", specs)
+    revision = payload["date_index"]["revisions"][1]
+    second = dict(revision["occurrences"][0], source_path="src/B-2.xml")
+    revision["occurrences"].append(second)
+    for key in ("promulgation_rank", "enforcement_rank"):
+        ranks = [o[key] for r in payload["date_index"]["revisions"] for o in r["occurrences"]]
+        second[key] = max(r for r in ranks if r is not None) + 1
+    index = load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, payload))
+    row = _lookup(index, "2007-01-01", "시행일자")
+    assert len(row["candidates"]) == 2 and len(row["llm_cross_checks"]) == 1
+
+
+def test_an_agreement_and_an_index_without_cross_checks_show_nothing(tmp_path):
+    agree = [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01", evidence=_cross("agree")),
+             spec("L", "B", "llm", p="2010-01-01", e="2010-02-01")]
+    _, index = _load(tmp_path, agree)
+    assert "llm_cross_checks" not in _lookup(index, "2000-01-01", "시행일자")
+    _, plain = _load(tmp_path, [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01"),
+                                spec("L", "B", "unresolved", p="2006-08-28")])
+    assert "llm_cross_checks" not in _lookup(plain, "2007-01-01", "시행일자")
+
+
 def test_schema_1_with_an_llm_status_is_rejected(tmp_path):
     fake = FakeGitHub()
     payload = build_index(fake, "laws", "enforcement", LLM)

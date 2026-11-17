@@ -82,14 +82,16 @@ def _blob_sha(data: bytes) -> str:
 
 def spec(identity: str, revision: str, status: str = "confirmed", *, p: Optional[str] = None,
          e: Optional[str] = None, repeal: bool = False, body: str = "git", name: str = "fixture",
-         category: str = "법률", path: Optional[str] = None, semantics: Optional[list] = None) -> dict:
+         category: str = "법률", path: Optional[str] = None, semantics: Optional[list] = None,
+         evidence: Optional[dict] = None) -> dict:
     """One revision with one occurrence. ``p``/``e`` are promulgation and enforcement dates.
 
     ``semantics`` is written as the occurrence key ``undated_semantics`` when it is not None.
+    ``evidence`` replaces the occurrence ``date_evidence`` when it is not None.
     """
     return dict(identity=identity, revision=revision, status=status, p=p, e=e, repeal=repeal,
                 body=body, name=name, category=category, path=path or f"kr/{category}/{name}.md",
-                semantics=semantics)
+                semantics=semantics, evidence=evidence)
 
 
 def build_index(fake: FakeGitHub, dataset: str, basis: str, specs: list[dict]) -> dict:
@@ -120,12 +122,14 @@ def build_index(fake: FakeGitHub, dataset: str, basis: str, specs: list[dict]) -
                "enforcement_rank": ranked["e"].get(id(s))}
         if s["semantics"] is not None:
             occ["undated_semantics"] = s["semantics"]
+        if s.get("evidence") is not None:
+            occ["date_evidence"] = s["evidence"]
         revisions.append({"identity": s["identity"], "revision": s["revision"], "copy_id": _sha256(s["revision"].encode()),
                           "name": s["name"], "category": s["category"], "canonical_path": s["path"],
                           "promulgation_date": s["p"], "enforcement_date": s["e"], "status": s["status"],
                           "repeal": s["repeal"], "reason": "fixture", "date_evidence": {}, "occurrences": [occ],
                           "body": body})
-    schema = 2 if any(s["status"] == "llm" for s in specs) else 1
+    schema = 2 if any(s["status"] == "llm" or "llm_cross_check" in (s.get("evidence") or {}) for s in specs) else 1
     return {"date_index": {"schema_version": schema, "basis": basis, "dataset": dataset, "head_commit_sha": fake.head,
                            "snapshots": [], "revisions": revisions}}
 
