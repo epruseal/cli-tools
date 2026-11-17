@@ -689,13 +689,18 @@ def _timing_payload(fake, specs, marked=()):
     return payload
 
 
-def test_a_dated_selection_with_separate_timing_names_the_sentences(tmp_path):
+@pytest.mark.parametrize("marked", [{"A"}, set()], ids=["mark", "older-index"])
+def test_a_dated_selection_with_separate_timing_names_the_sentences(tmp_path, marked):
+    # An index from before the compiler mark has no revision field; the evidence alone gives the row.
     fake = FakeGitHub()
     specs = [spec("L", "A", p="1999-12-31", e="1999-12-31", evidence={"separate_application_timing": [TIMING]})]
-    index = load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, _timing_payload(fake, specs, {"A"})))
+    index = load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, _timing_payload(fake, specs, marked)))
     row = _lookup(index, "2000-01-01", "시행일자")
     assert row["separate_application_timing"] == {"label": "별도 적용 시기 문장", "sentences": [TIMING]}
-    assert row["selected"]["separate_application_timing"] is True
+    if marked:
+        assert row["selected"]["separate_application_timing"] is True
+    else:
+        assert "separate_application_timing" not in row["selected"]
     # A promulgation-date lookup of the same dated revision shows the same mark.
     assert _lookup(index, "2000-01-01", "공포일자")["separate_application_timing"]["sentences"] == [TIMING]
 
