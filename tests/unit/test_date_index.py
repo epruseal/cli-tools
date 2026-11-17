@@ -408,7 +408,7 @@ def _mutate(tmp_path, mutate, specs=LAWS):
 
 
 @pytest.mark.parametrize("mutate", [
-    lambda d: d.update(schema_version=2),
+    lambda d: d.update(schema_version=3),  # 1 and 2 (LLM judgment dates, compiler#2) are supported
     lambda d: d.update(dataset="admrules"),
     lambda d: d["revisions"][0]["occurrences"][0].update(status="undated"),
     lambda d: d["revisions"][0]["occurrences"][0].update(promulgation_rank=None),
@@ -561,3 +561,41 @@ def test_the_boundary_dates_of_the_range_load_and_compare_as_text(tmp_path, valu
     _, index = _load(tmp_path, [spec("L", "A", p=value, e=value)])
     assert _lookup(index, value, "공포일자")["selected"]["revision"] == "A"
     assert _lookup(index, value, "시행일자")["selected"]["revision"] == "A"
+
+
+# ---- LLM judgment dates (compiler#2, schema 2) -------------------------
+
+LLM = [
+    spec("L", "A", "confirmed", p="2000-01-01", e="2000-01-01"),
+    spec("L", "B", "llm", p="2010-01-01", e="2010-02-01"),
+]
+
+
+def test_an_llm_date_is_selected_like_a_confirmed_one_and_named(tmp_path):
+    _, index = _load(tmp_path, LLM)
+    row = _lookup(index, "2010-03-01", "시행일자")
+    assert row["selected"]["revision"] == "B"
+    assert (row["date_resolution_status"], row["as_of_status"]) == ("llm", "effective")
+    assert row["llm_judgment"]["label"] == "LLM 판단"
+    assert row["llm_judgment"]["quote"] == "이 조례는 공포일부터 시행한다."
+    before = _lookup(index, "2010-01-15", "시행일자")
+    assert before["selected"]["revision"] == "A" and "llm_judgment" not in before
+
+
+def test_an_llm_repeal_has_no_confirmed(tmp_path):
+    specs = [spec("L", "A", "confirmed", p="2000-01-01", e="2000-01-01"),
+             spec("L", "B", "llm", p="2010-01-01", e="2010-02-01", repeal=True)]
+    _, index = _load(tmp_path, specs)
+    row = _lookup(index, "2010-03-01", "시행일자")
+    assert (row["as_of_status"], row["confirmed"]) == ("repealed", None)
+
+
+def test_schema_1_with_an_llm_status_is_rejected(tmp_path):
+    fake = FakeGitHub()
+    payload = build_index(fake, "laws", "enforcement", LLM)
+    payload["date_index"]["schema_version"] = 1
+    with pytest.raises(LegalizeError):
+        load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, payload))
+    payload["date_index"]["schema_version"] = 3
+    with pytest.raises(LegalizeError):
+        load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, payload, name="three.json"))
