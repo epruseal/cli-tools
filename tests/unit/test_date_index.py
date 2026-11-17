@@ -617,6 +617,7 @@ def test_an_undated_cross_check_disagreement_is_shown(tmp_path):
     _, index = _load(tmp_path, specs)
     [check] = _lookup(index, "2007-01-01", "시행일자")["llm_cross_checks"]
     assert check["revision"] == "B"
+    assert [c["date"] for c in check["candidate_dates"]] == ["1998-09-01", "2006-08-28"]
 
 
 def test_a_selected_cross_check_disagreement_is_shown_for_promulgation_dates(tmp_path):
@@ -629,6 +630,7 @@ def test_a_selected_cross_check_disagreement_is_shown_for_promulgation_dates(tmp
     assert row["selected"]["revision"] == "B"
     [check] = row["llm_cross_checks"]
     assert check["result"] == "copy-withheld"
+    assert [c["date"] for c in check["candidate_dates"]] == ["1998-09-01", "2006-08-28"]
 
 
 def test_a_revision_with_two_occurrences_is_shown_once(tmp_path):
@@ -655,6 +657,11 @@ def test_an_agreement_and_an_index_without_cross_checks_show_nothing(tmp_path):
     _, plain = _load(tmp_path, [spec("L", "A", "confirmed", p="1990-01-01", e="1990-01-01"),
                                 spec("L", "B", "unresolved", p="2006-08-28")])
     assert "llm_cross_checks" not in _lookup(plain, "2007-01-01", "시행일자")
+    # A schema 2 index (an llm row) whose rows have no llm_cross_check (llm2).
+    llm2_specs = [spec("L", "A", "llm", p="1990-01-01", e="1990-01-01"), spec("L", "B", "unresolved", p="2006-08-28")]
+    assert build_index(FakeGitHub(), "laws", "enforcement", llm2_specs)["date_index"]["schema_version"] == 2
+    _, llm2 = _load(tmp_path, llm2_specs)
+    assert "llm_cross_checks" not in _lookup(llm2, "2007-01-01", "시행일자")
 
 
 def test_schema_1_with_an_llm_status_is_rejected(tmp_path):
