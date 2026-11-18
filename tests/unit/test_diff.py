@@ -88,3 +88,30 @@ def test_unified_mode_returns_text() -> None:
     assert result.mode == "unified"
     assert result.text is not None
     assert "+bar" in result.text
+
+
+def test_same_number_with_different_spelling_pairs_as_one_article() -> None:
+    for spelling in ("01", "１"):
+        result = diff_laws([_a(spelling, None, "old")], [_a("1", None, "new")], mode="article")
+        assert [c.status for c in result.changes] == ["modified"], spelling
+
+
+def _numbers(changes, status: str) -> list[tuple[str, str | None]]:
+    return [(c.article_no.jo, c.article_no.ui) for c in changes if c.status == status]
+
+
+def test_shared_articles_sort_by_number() -> None:
+    numbers = [("10", None), ("2", None), ("839", "10"), ("839", "2"), ("839", None), ("839", "0")]
+    articles = [_a(jo, ui, f"same {jo} {ui}") for jo, ui in numbers]
+    result = diff_laws(articles, list(articles), mode="article", show_unchanged=True)
+    assert _numbers(result.changes, "unchanged") == [
+        ("2", None), ("10", None), ("839", None), ("839", "0"), ("839", "2"), ("839", "10"),
+    ]
+
+
+def test_removed_and_added_sort_by_number() -> None:
+    a = [_a("10", None, "가가가"), _a("839", "10", "나나나"), _a("9", None, "다다다"), _a("839", "2", "라라라")]
+    b = [_a("100", None, "xxx"), _a("840", "10", "yyy"), _a("20", None, "zzz"), _a("840", "2", "www")]
+    result = diff_laws(a, b, mode="article")
+    assert _numbers(result.changes, "removed") == [("9", None), ("10", None), ("839", "2"), ("839", "10")]
+    assert _numbers(result.changes, "added") == [("20", None), ("100", None), ("840", "2"), ("840", "10")]

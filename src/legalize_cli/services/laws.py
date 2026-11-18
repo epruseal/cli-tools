@@ -18,6 +18,7 @@ from ..laws.diff import diff_laws
 from ..laws.frontmatter import parse as parse_frontmatter
 from ..laws.list import enumerate_laws, filter_and_paginate
 from ..laws.lookup import ResolvedLawFile, resolve_law_file_as_of, resolve_law_path
+from ..util.article_id import article_id
 from ..util.article_parse import parse_article_query
 from ..util.errors import ArticleNotFoundError, InputValidationError, VersionNotFoundError
 from .context import ServiceContext
@@ -106,21 +107,20 @@ def get_law(context: ServiceContext, request: LawGetRequest) -> LoadedLaw:
 
 def load_law_article(context: ServiceContext, request: LawArticleRequest) -> tuple[LawArticleResult, object]:
     try:
-        query = parse_article_query(request.article_no)
+        query_id = article_id(parse_article_query(request.article_no))
     except Exception as exc:
         raise InputValidationError("유효한 조문 번호를 입력하세요.") from exc
     display, path, target, resolved = _resolve(context, request)
     _raw_text, fm, body, version, source = _version_source(display, path, target, request, resolved)
     match = next((article for article in parse_articles(body)
-                  if article.article_no.jo == query.jo
-                  and (article.article_no.ui or None) == (query.ui or None)), None)
+                  if article_id(article.article_no) == query_id), None)
     if match is None:
         raise ArticleNotFoundError(
             f"선택된 {display}/{request.category} 버전에서 {request.article_no}을 찾을 수 없습니다."
         )
     result = LawArticleResult(
         law=display, category=request.category, version=version, source=source,
-        article_no=match.article_no, status=match.status,
+        article_no=match.article_no, article_id=article_id(match.article_no), status=match.status,
         annotations=match.annotations, parent_structure=match.parent_structure,
         content=match.content,
         warnings=_warnings(target, request.semantic, fm.enforcement_date) + _source_warnings(source),
@@ -170,8 +170,11 @@ def compare_law_versions(context: ServiceContext, request: LawDiffRequest) -> La
         dataset="laws",
     ))
     changes = [ArticleChangeResult(
-        article_no=item.article_no, status=item.status, hunk=item.hunk,
-        from_article_no=item.from_article_no, similarity=item.similarity,
+        article_no=item.article_no, article_id=article_id(item.article_no),
+        status=item.status, hunk=item.hunk,
+        from_article_no=item.from_article_no,
+        from_article_id=article_id(item.from_article_no) if item.from_article_no is not None else None,
+        similarity=item.similarity,
     ) for item in result.changes]
     return LawDiffResult(
         law=display_a, category=request.category,

@@ -26,6 +26,7 @@ class LawArticleResult(ResultBase):
     version: LawVersion
     source: SourceReference
     article_no: ArticleNo
+    article_id: str
     status: Literal["active", "deleted"]
     annotations: list[str]
     parent_structure: list[str]
@@ -49,9 +50,11 @@ class LawDiffVersion(ContractModel):
 
 class ArticleChangeResult(ContractModel):
     article_no: ArticleNo
+    article_id: str
     status: Literal["modified", "added", "removed", "renamed", "whitespace-only", "unchanged"]
     hunk: Optional[str] = None
     from_article_no: Optional[ArticleNo] = None
+    from_article_id: Optional[str] = None
     similarity: Optional[float] = None
 
 

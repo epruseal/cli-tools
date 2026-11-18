@@ -3,8 +3,24 @@
     "ArticleChangeResult": {
       "additionalProperties": false,
       "properties": {
+        "article_id": {
+          "title": "Article Id",
+          "type": "string"
+        },
         "article_no": {
           "$ref": "#/$defs/ArticleNo"
+        },
+        "from_article_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "From Article Id"
         },
         "from_article_no": {
           "anyOf": [
@@ -56,6 +72,7 @@
       },
       "required": [
         "article_no",
+        "article_id",
         "status"
       ],
       "title": "ArticleChangeResult",

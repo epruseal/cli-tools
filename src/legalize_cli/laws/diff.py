@@ -15,6 +15,7 @@ import difflib
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Tuple
 
+from ..util.article_id import article_id
 from .model import Article, ArticleNo
 
 DiffMode = Literal["unified", "side-by-side", "article"]
@@ -81,8 +82,13 @@ def diff_laws(
 # ---- article-mode internals -------------------------------------------
 
 
-def _article_key(a: Article) -> Tuple[str, Optional[str]]:
-    return (a.article_no.jo, a.article_no.ui or None)
+def _article_key(a: Article) -> str:
+    return article_id(a.article_no)
+
+
+def _number_key(a: Article) -> Tuple[int, int]:
+    """Sort an article by its source (조, 의) numbers, as before article IDs."""
+    return _sort_key((a.article_no.jo, a.article_no.ui or None))
 
 
 def _sort_key(k: Tuple[str, Optional[str]]) -> Tuple[int, int]:
@@ -105,8 +111,8 @@ def _article_changes(
     *,
     show_unchanged: bool,
 ) -> List[ArticleChange]:
-    a_map: Dict[Tuple[str, Optional[str]], Article] = {_article_key(a): a for a in a_articles}
-    b_map: Dict[Tuple[str, Optional[str]], Article] = {_article_key(a): a for a in b_articles}
+    a_map: Dict[str, Article] = {_article_key(a): a for a in a_articles}
+    b_map: Dict[str, Article] = {_article_key(a): a for a in b_articles}
 
     out: List[ArticleChange] = []
     shared = a_map.keys() & b_map.keys()
@@ -114,7 +120,7 @@ def _article_changes(
     only_b = b_map.keys() - a_map.keys()
 
     # Shared articles — modified / unchanged / whitespace-only.
-    for key in sorted(shared, key=_sort_key):
+    for key in sorted(shared, key=lambda k: _number_key(b_map[k])):
         a_art, b_art = a_map[key], b_map[key]
         status, hunk = _compare_bodies(a_art, b_art)
         if status == "unchanged" and not show_unchanged:
@@ -129,8 +135,8 @@ def _article_changes(
 
     # Rename detection + added/removed fallback.
     rename_pairs, added_leftovers, removed_leftovers = _detect_renames(
-        [a_map[k] for k in sorted(only_a, key=_sort_key)],
-        [b_map[k] for k in sorted(only_b, key=_sort_key)],
+        sorted((a_map[k] for k in only_a), key=_number_key),
+        sorted((b_map[k] for k in only_b), key=_number_key),
     )
 
     for removed_article, added_article, ratio in rename_pairs:

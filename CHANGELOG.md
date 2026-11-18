@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Add `article_id` to CLI JSON `laws.article` and `laws.diff` (article mode) and to MCP `laws_article` and `laws_diff`. The rule is `art_{조}` or `art_{조}-{의}`, for example `제23조의2` -> `art_23-2`. A `renamed` change also carries `from_article_id`.
+- Add `legalize_cli.util.article_id.article_id()`. Article lookup, diff pairing, and every `article_id` output use this one rule.
+- Keep the MCP schema version 2.0 and the CLI schema version 1.0. When the query and the article headings use ASCII digits without leading zeros, existing keys keep their names, order, and values. The Changed section describes the results for other article numbers.
+- MCP output schemas for `laws_article` and `laws_diff` now list `article_id` in `required`, and they keep `additionalProperties: false`. A client that strictly validates new `laws_article` responses or new `laws_diff` responses with items in `changes` against the old 2.0 schema files rejects them. Update the schema files. The new schema files also reject such responses from 0.5.3 and earlier servers.
+- `laws_diff` responses grow by the new keys in each change. A diff near the size limit of MCP responses can now end with `RESPONSE_TOO_LARGE`.
+
+### Changed
+
+- Article lookup compares the 조 and 의 numbers of the query and of the body heading as numbers. Queries with full-width digits or leading zeros (`８３９조의２`, `0839조의2`) now find the article, and an ASCII query (`1`) now finds a heading written as `제01조` or `제１조`. When several headings in one version have the same number, lookup returns the first one.
+- Article-mode diff pairs articles by `article_id`. Headings that differ only in spelling (`제01조` and `제1조`) are compared as one article, and the last of several headings with the same number is used.
+
 ## [0.5.1] - 2026-10-07
 
 ### Fixed
