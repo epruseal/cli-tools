@@ -246,6 +246,9 @@ JSON text를 제공합니다. 법령의 `version`에는 선택 기준일·실제
 commit·GitHub URL·확인된 공식 원문 URL이 구분됩니다. `warnings[]`의
 `NOT_YET_EFFECTIVE`, `FILE_LEVEL_EFFECTIVE_DATE_ONLY`를 확인하세요. 조문별
 시행일과 경과조치는 판정하지 않습니다. diff의 `renamed`는 유사도 추정입니다.
+`laws_article` 결과와 `laws_diff`의 `changes[]` 항목은 [조문 ID](#조문-id) `article_id`를
+담습니다. `laws_diff` 항목의 `from_article_id`는 `renamed`일 때 옛 조문 ID이고 그 밖에는
+`null`입니다(CLI JSON은 `renamed`일 때만 이 키를 씁니다).
 
 검색 결과는 `requested_strategy`, dataset별 `outcomes.actual_strategy`,
 `searched_fields`, `complete`, `truncated`를 제공합니다. 토큰 없는 auto는
@@ -418,9 +421,32 @@ JSON 응답: `{"schema_version": "1.0", "kind": "laws.get", "law", "semantic", "
 legalize laws article <법령명> <조문번호> [--category X] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--json]
 ```
 
-조문번호 형식 모두 허용: `제839조`, `839`, `839조의2`, `839-2`, `제839조의2`
+조문번호 형식 모두 허용: `제839조`, `839`, `839조의2`, `839-2`, `제839조의2`.
+조와 의 번호는 숫자 값으로 비교합니다. 전각 숫자(`８３９조의２`)와 앞자리 0(`0839조의2`)도
+같은 조문을 찾고, 본문 제목이 `제01조`처럼 적혀 있어도 `1`로 찾습니다. 같은 번호로
+읽히는 제목이 한 판에 여럿이면 첫 조문을 돌려줍니다.
 
-JSON 응답: `{"schema_version": "1.0", "kind": "laws.article", "semantic", "requested_date", "resolved_version_date", "공포일자", "시행일자", "출처", "법령ID", "법령MST", "file_effective_date_only", "article_no", "status", "annotations", "content", "parent_structure"}`. `status`는 삭제 조문 여부이며, 시행 여부 판정은 아닙니다.
+JSON 응답: `{"schema_version": "1.0", "kind": "laws.article", "semantic", "requested_date", "resolved_version_date", "공포일자", "시행일자", "출처", "법령ID", "법령MST", "file_effective_date_only", "article_no", "article_id", "status", "annotations", "content", "parent_structure"}`. `status`는 삭제 조문 여부이며, 시행 여부 판정은 아닙니다.
+
+#### 조문 ID
+
+`article_id`는 조문 번호에서 만든 조 단위 ID입니다. 규칙은 `art_{조}`이고, 가지번호가
+있으면 `art_{조}-{의}`입니다.
+
+| 조문 번호 | `article_id` |
+|------|------|
+| `제23조` | `art_23` |
+| `제23조의2` | `art_23-2` |
+| `제０２３조의２`, `023조의02`, `23-2` | `art_23-2` |
+| `제0조`, `839조의0` | `art_0`, `art_839-0` |
+
+- 조와 의 번호는 ASCII 십진수로 정규화합니다(앞자리 0 제거, 전각 숫자 변환).
+- 예외: 조문 파서는 `regex` 모듈이 아는 모든 유니코드 숫자를 받습니다. 실행 중인
+  Python의 유니코드 표가 그 숫자를 모르면 원문 숫자를 그대로 ID에 씁니다. 그런 ID는
+  비ASCII 숫자를 담을 수 있고, 더 새 Python에서는 같은 숫자가 정규화될 수 있습니다.
+  같은 Python에서는 질의와 본문 제목이 늘 같은 ID를 받습니다.
+- 항, 호, 목 단위 ID와 개정을 거쳐도 유지되는 ID는 제공하지 않습니다.
+- Python에서는 `legalize_cli.util.article_id.article_id(ArticleNo)`로 같은 규칙을 씁니다.
 
 ### `laws diff` — 두 버전 비교
 
@@ -434,6 +460,11 @@ JSON 응답의 `a`와 `b`에는 각각 `semantic`, `resolved_version_date`,
 `resolved_commit_date`, `resolved_commit_sha`가 포함됩니다.
 
 article 모드 상태값: `modified | added | removed | renamed | whitespace-only`
+
+article 모드의 각 항목은 `article_no` 바로 뒤에 [조문 ID](#조문-id) `article_id`를 담습니다.
+`renamed` 항목은 `from` 바로 뒤에 옛 조문의 `from_article_id`도 담습니다. 두 판의 조문은
+`article_id`로 짝짓습니다. 그래서 `제01조`와 `제1조`처럼 표기만 다른 같은 번호는 한 조문으로
+비교하고, 같은 ID의 제목이 한 판에 여럿이면 마지막 조문을 씁니다.
 
 ### `precedents list` — 판례 목록 조회
 

@@ -20,6 +20,7 @@ from ..util.cli_common import (
     handle_domain_error,
     make_client,
 )
+from ..util.article_id import article_id
 from ..util.errors import LegalizeError, NotFoundError
 from ..services.dates import parse_date_or_today
 from .list_laws import laws_app
@@ -162,12 +163,14 @@ def _parse_date(raw: Optional[str]) -> date:
 def _change_to_dict(c) -> dict:
     payload: dict = {
         "article_no": c.article_no.model_dump(by_alias=True),
+        "article_id": article_id(c.article_no),
         "status": c.status,
     }
     if c.hunk is not None:
         payload["hunk"] = c.hunk
     if c.from_article_no is not None:
         payload["from"] = c.from_article_no.model_dump(by_alias=True)
+        payload["from_article_id"] = article_id(c.from_article_no)
     if c.similarity is not None:
         payload["similarity"] = c.similarity
     return payload

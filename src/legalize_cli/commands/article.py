@@ -14,6 +14,7 @@ from ..laws.model import ArticleNo
 from ..services.context import ServiceContext
 from ..services.dates import parse_date_or_today
 from ..services.laws import load_law_article
+from ..util.article_id import article_id
 from ..util.article_parse import parse_article_query
 from ..util.cli_common import (
     build_global_opts,
@@ -77,6 +78,7 @@ def article_cmd(
             "법령MST": result.version.law_mst,
             "file_effective_date_only": True,
             "article_no": result.article_no.model_dump(by_alias=True),
+            "article_id": article_id(result.article_no),
             "status": result.status,
             "annotations": result.annotations,
             "path": result.source.path,

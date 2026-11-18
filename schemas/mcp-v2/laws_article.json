@@ -262,6 +262,10 @@
       "title": "Annotations",
       "type": "array"
     },
+    "article_id": {
+      "title": "Article Id",
+      "type": "string"
+    },
     "article_no": {
       "$ref": "#/$defs/ArticleNo"
     },
@@ -325,6 +329,7 @@
     "version",
     "source",
     "article_no",
+    "article_id",
     "status",
     "annotations",
     "parent_structure",
