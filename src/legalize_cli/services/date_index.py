@@ -228,6 +228,9 @@ def _load_date_index(client, repo: str, dataset: str, path: Path | None):
             identities.add(key)
             if not isinstance(rev["date_evidence"], dict):
                 raise _invalid("invalid date evidence")
+            # The compiler writes the separate application timing mark only as true (compiler#5).
+            if "separate_application_timing" in rev and rev["separate_application_timing"] is not True:
+                raise _invalid("invalid separate application timing mark")
             if not isinstance(rev["occurrences"], list) or not rev["occurrences"]:
                 raise _invalid("missing occurrences")
             body = rev["body"]
@@ -382,6 +385,19 @@ def _cross_checks(items):
     return found
 
 
+def _separate_timing(item):
+    """The separate application timing sentences of a dated item, or None (compiler#5).
+
+    The same condition as the compiler mark: a date status and a non-empty list. An item whose
+    date was taken away keeps the list in its evidence but has no date to set them apart from.
+    """
+    occurrence = item["occurrence"]
+    if occurrence["status"] not in ("confirmed", "estimated", "llm"):
+        return None
+    sentences = occurrence["date_evidence"].get("separate_application_timing")
+    return sentences if isinstance(sentences, list) and sentences else None
+
+
 def select_date(index, target: date, semantic: str):
     target_string = target.isoformat()
     grouped = {}
@@ -425,6 +441,9 @@ def select_date(index, target: date, semantic: str):
                 judgment = chosen["occurrence"]["date_evidence"].get("llm_judgment") or {}
                 row["llm_judgment"] = {"label": "LLM 판단", "field": judgment.get("field"), "quote": judgment.get("quote"),
                                        "model": judgment.get("model"), "judged_at": judgment.get("judged_at")}
+            sentences = _separate_timing(chosen) if chosen else None
+            if sentences:
+                row["separate_application_timing"] = {"label": "별도 적용 시기 문장", "sentences": sentences}
             checks = _cross_checks([chosen, *group["candidates"], *group["undated"]])
             if checks:
                 row["llm_cross_checks"] = checks

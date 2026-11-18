@@ -673,3 +673,64 @@ def test_schema_1_with_an_llm_status_is_rejected(tmp_path):
     payload["date_index"]["schema_version"] = 3
     with pytest.raises(LegalizeError):
         load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, payload, name="three.json"))
+
+
+# ---- separate application timing (compiler#5) --------------------------
+
+TIMING = "제2조(주차요금의 조정시기) 주차요금 징수는 2000년 2월 1일부터 시행한다."
+
+
+def _timing_payload(fake, specs, marked=()):
+    """An index whose revisions in ``marked`` carry the compiler mark ``separate_application_timing: true``."""
+    payload = build_index(fake, "laws", "enforcement", specs)
+    for revision in payload["date_index"]["revisions"]:
+        if revision["revision"] in marked:
+            revision["separate_application_timing"] = True
+    return payload
+
+
+@pytest.mark.parametrize("marked", [{"A"}, set()], ids=["mark", "older-index"])
+def test_a_dated_selection_with_separate_timing_names_the_sentences(tmp_path, marked):
+    # An index from before the compiler mark has no revision field; the evidence alone gives the row.
+    fake = FakeGitHub()
+    specs = [spec("L", "A", p="1999-12-31", e="1999-12-31", evidence={"separate_application_timing": [TIMING]})]
+    index = load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, _timing_payload(fake, specs, marked)))
+    row = _lookup(index, "2000-01-01", "시행일자")
+    assert row["separate_application_timing"] == {"label": "별도 적용 시기 문장", "sentences": [TIMING]}
+    if marked:
+        assert row["selected"]["separate_application_timing"] is True
+    else:
+        assert "separate_application_timing" not in row["selected"]
+    # A promulgation-date lookup of the same dated revision shows the same mark.
+    assert _lookup(index, "2000-01-01", "공포일자")["separate_application_timing"]["sentences"] == [TIMING]
+
+
+@pytest.mark.parametrize("evidence", [{"separate_application_timing": []}, {}])
+def test_a_selection_without_separate_timing_keeps_the_row(tmp_path, evidence):
+    _, index = _load(tmp_path, [spec("L", "A", p="1999-12-31", e="1999-12-31", evidence=evidence)])
+    _, plain = _load(tmp_path, [spec("L", "A", p="1999-12-31", e="1999-12-31")])
+    row = _lookup(index, "2000-01-01", "시행일자")
+    assert "separate_application_timing" not in row
+    assert row.keys() == _lookup(plain, "2000-01-01", "시행일자").keys()
+
+
+def test_a_revision_whose_date_was_taken_away_has_no_mark(tmp_path):
+    # The compiler keeps the list when it takes the date away; the result shows no mark.
+    specs = [spec("L", "A", p="1990-01-01", e="1990-01-01"),
+             spec("L", "B", "unresolved", p="2006-08-28", evidence={"separate_application_timing": [TIMING]})]
+    _, index = _load(tmp_path, specs)
+    enforcement = _lookup(index, "2007-01-01", "시행일자")
+    assert [item["revision"] for item in enforcement["candidates"]] == ["B"]
+    assert "separate_application_timing" not in enforcement
+    promulgation = _lookup(index, "2007-01-01", "공포일자")
+    assert promulgation["selected"]["revision"] == "B"
+    assert "separate_application_timing" not in promulgation
+
+
+@pytest.mark.parametrize("value", [False, 1, "true", None])
+def test_a_separate_timing_mark_other_than_true_is_rejected(tmp_path, value):
+    fake = FakeGitHub()
+    payload = build_index(fake, "laws", "enforcement", [spec("L", "A", p="1999-12-31", e="1999-12-31")])
+    payload["date_index"]["revisions"][0]["separate_application_timing"] = value
+    with pytest.raises(DateIndexError):
+        load_date_index(fake, "legalize-kr", "laws", write_index(tmp_path, payload))
