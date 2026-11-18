@@ -5,10 +5,10 @@
 ### Added
 
 - Add `article_id` to CLI JSON `laws.article` and `laws.diff` (article mode) and to MCP `laws_article` and `laws_diff`. The rule is `art_{조}` or `art_{조}-{의}`, for example `제23조의2` -> `art_23-2`. A `renamed` change also carries `from_article_id`.
-- Add `legalize_cli.util.article_id.article_id()`. Every article lookup, diff pairing, and output uses this one rule.
-- Keep MCP schema 2.0 and CLI schema 1.0 unchanged. Existing keys keep their names, order, and values.
-- MCP output schemas for `laws_article` and `laws_diff` now list `article_id` in `required`, and they keep `additionalProperties: false`. A client that strictly validates new responses with the old 2.0 schema files rejects them, so update the schema files. The new schema files also reject responses from 0.5.3 and earlier servers.
-- `laws_diff` responses grow by the new keys in each change.
+- Add `legalize_cli.util.article_id.article_id()`. Article lookup, diff pairing, and every `article_id` output use this one rule.
+- Keep the MCP schema version 2.0 and the CLI schema version 1.0. When the query and the article headings use ASCII digits without leading zeros, existing keys keep their names, order, and values. The Changed section describes the results for other article numbers.
+- MCP output schemas for `laws_article` and `laws_diff` now list `article_id` in `required`, and they keep `additionalProperties: false`. A client that strictly validates new `laws_article` responses or new `laws_diff` responses with items in `changes` against the old 2.0 schema files rejects them. Update the schema files. The new schema files also reject such responses from 0.5.3 and earlier servers.
+- `laws_diff` responses grow by the new keys in each change. A diff near the size limit of MCP responses can now end with `RESPONSE_TOO_LARGE`.
 
 ### Changed
 

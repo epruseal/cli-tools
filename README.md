@@ -430,7 +430,7 @@ JSON 응답: `{"schema_version": "1.0", "kind": "laws.article", "semantic", "req
 
 #### 조문 ID
 
-`article_id`는 조문 번호에서 만든 조 단위 ID입니다. 규칙은 `art_{조}`이고, 가지번호가
+`article_id`는 조문 번호에서 만든 조 단위 ID입니다. 규칙은 `art_{조}`이고 가지번호가
 있으면 `art_{조}-{의}`입니다.
 
 | 조문 번호 | `article_id` |
@@ -442,9 +442,10 @@ JSON 응답: `{"schema_version": "1.0", "kind": "laws.article", "semantic", "req
 
 - 조와 의 번호는 ASCII 십진수로 정규화합니다(앞자리 0 제거, 전각 숫자 변환).
 - 예외: 조문 파서는 `regex` 모듈이 아는 모든 유니코드 숫자를 받습니다. 실행 중인
-  Python의 유니코드 표가 그 숫자를 모르면 원문 숫자를 그대로 ID에 씁니다. 그런 ID는
-  비ASCII 숫자를 담을 수 있고, 더 새 Python에서는 같은 숫자가 정규화될 수 있습니다.
-  같은 Python에서는 질의와 본문 제목이 늘 같은 ID를 받습니다.
+  Python의 유니코드 표가 그 숫자를 모르거나 숫자가 Python 정수 문자열 길이 한도를 넘으면
+  원문 숫자를 그대로 ID에 씁니다. 그런 ID는 비ASCII 숫자를 담을 수 있습니다. 더 새
+  Python은 옛 Python이 모르던 숫자를 정규화할 수 있습니다. 같은 Python에서 같은 숫자
+  문자로 적은 질의와 본문 제목은 같은 ID를 받습니다.
 - 항, 호, 목 단위 ID와 개정을 거쳐도 유지되는 ID는 제공하지 않습니다.
 - Python에서는 `legalize_cli.util.article_id.article_id(ArticleNo)`로 같은 규칙을 씁니다.
 
@@ -463,8 +464,8 @@ article 모드 상태값: `modified | added | removed | renamed | whitespace-onl
 
 article 모드의 각 항목은 `article_no` 바로 뒤에 [조문 ID](#조문-id) `article_id`를 담습니다.
 `renamed` 항목은 `from` 바로 뒤에 옛 조문의 `from_article_id`도 담습니다. 두 판의 조문은
-`article_id`로 짝짓습니다. 그래서 `제01조`와 `제1조`처럼 표기만 다른 같은 번호는 한 조문으로
-비교하고, 같은 ID의 제목이 한 판에 여럿이면 마지막 조문을 씁니다.
+`article_id`로 짝짓습니다. `제01조`와 `제1조`처럼 표기만 다른 같은 번호는 한 조문으로
+비교합니다. 같은 ID의 제목이 한 판에 여럿이면 마지막 조문을 씁니다.
 
 ### `precedents list` — 판례 목록 조회
 

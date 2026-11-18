@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import builtins
-
 import pytest
 import regex
 
@@ -73,7 +71,6 @@ def test_int_failure_falls_back_to_source_text(monkeypatch) -> None:
 
     monkeypatch.setattr(article_id_module, "int", failing_int, raising=False)
     assert article_id(ArticleNo.model_validate({"조": "0839", "의": "02"})) == "art_0839-02"
-    monkeypatch.setattr(article_id_module, "int", builtins.int, raising=False)
 
 
 @pytest.mark.parametrize("jo, ui", [("-1", None), ("839", " 2"), ("8_39", None), ("abc", None)])
