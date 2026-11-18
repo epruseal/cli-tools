@@ -195,8 +195,11 @@ def _load_date_index(client, repo: str, dataset: str, path: Path | None):
     payload = _read_index_file(path)
     try:
         index = payload["date_index"]
-        if not isinstance(index, dict) or type(index["schema_version"]) is not int or index["schema_version"] != 1:
+        # Schema 2 is the index of an enforcement build with an LLM judgment ledger (compiler#2):
+        # it adds the occurrence status "llm", a date that an LLM judgment gave.
+        if not isinstance(index, dict) or type(index["schema_version"]) is not int or index["schema_version"] not in (1, 2):
             raise _invalid("unsupported schema")
+        dated = ("confirmed", "estimated", "llm") if index["schema_version"] == 2 else ("confirmed", "estimated")
         if index["basis"] not in ("promulgation", "enforcement") or index["dataset"] != dataset:
             raise _invalid("basis or dataset mismatch")
         head = index["head_commit_sha"]
@@ -244,7 +247,7 @@ def _load_date_index(client, repo: str, dataset: str, path: Path | None):
                 raise _invalid("invalid body kind")
             for occ in rev["occurrences"]:
                 status = occ["status"]
-                if status not in ("confirmed", "estimated", "unresolved", "undated"):
+                if status not in (*dated, "unresolved", "undated"):
                     raise _invalid("invalid occurrence status")
                 for key in ("source_path", "reason"):
                     if not isinstance(occ[key], str) or not occ[key]:
@@ -257,7 +260,7 @@ def _load_date_index(client, repo: str, dataset: str, path: Path | None):
                 promulgation = _date(occ["promulgation_date"])
                 enforcement = _date(occ["enforcement_date"])
                 exposure = _date(occ["exposure_date"])
-                if status in ("confirmed", "estimated"):
+                if status in dated:
                     valid_dates = enforcement is not None and exposure is None
                 elif status == "unresolved":
                     valid_dates = enforcement is None and promulgation is not None and exposure == promulgation
@@ -266,7 +269,7 @@ def _load_date_index(client, repo: str, dataset: str, path: Path | None):
                 if not valid_dates:
                     raise _invalid("occurrence status conflicts with dates")
                 _validate_undated_semantics(occ, status, promulgation)
-                event = enforcement if status in ("confirmed", "estimated") else exposure if status == "unresolved" else None
+                event = enforcement if status in dated else exposure if status == "unresolved" else None
                 for key, event_date in (("promulgation_rank", promulgation), ("enforcement_rank", event)):
                     rank = occ[key]
                     if event_date is None:
@@ -353,6 +356,32 @@ def attach_bodies(index, rows):
     return rows
 
 
+def _cross_checks(items):
+    """The LLM cross-check disagreements of the returned items, once per revision copy (compiler#2 v3.5).
+
+    The compiler withdrew the parser date of these copies; both candidate dates are shown
+    (user decision B2). A selected item counts too: a promulgation-date lookup selects by
+    promulgation date whatever the status.
+    """
+    found, seen = [], set()
+    for item in items:
+        if item is None:
+            continue
+        check = item["occurrence"]["date_evidence"].get("llm_cross_check") or {}
+        if check.get("result") not in ("disagree", "copy-withheld"):
+            continue
+        key = (item["identity"], item["revision"], item["copy_id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append({"label": "LLM 교차 확인 불일치", "identity": item["identity"], "revision": item["revision"],
+                      "copy_id": item["copy_id"], "result": check.get("result"),
+                      "candidate_dates": check.get("candidate_dates"), "parser_rule": check.get("parser_rule"),
+                      "llm_outcome": check.get("llm_outcome"), "field": check.get("field"), "quote": check.get("quote"),
+                      "model": check.get("model"), "judged_at": check.get("judged_at")})
+    return found
+
+
 def select_date(index, target: date, semantic: str):
     target_string = target.isoformat()
     grouped = {}
@@ -367,7 +396,7 @@ def select_date(index, target: date, semantic: str):
                 event, rank = occ["promulgation_date"], occ["promulgation_rank"]
                 if event is not None and event <= target_string:
                     group["versions"].append((rank, item))
-            elif occ["status"] in ("confirmed", "estimated"):
+            elif occ["status"] in ("confirmed", "estimated", "llm"):
                 event, rank = occ["enforcement_date"], occ["enforcement_rank"]
                 if event is not None and event <= target_string:
                     group["versions"].append((rank, item))
@@ -388,9 +417,18 @@ def select_date(index, target: date, semantic: str):
             as_of_status = "estimated"
         else:
             as_of_status = "effective"
-        confirmed = None if as_of_status == "repealed" and resolution == "confirmed" else chosen
+        # An LLM date counts as a confirmed one for the selection; the result names it (compiler#2).
+        confirmed = None if as_of_status == "repealed" and resolution in ("confirmed", "llm") else chosen
         if chosen or group["candidates"] or group["undated"]:
-            results.append({"identity": identity, "semantic": semantic, "requested_date": target_string, "basis": index["basis"], "selected": chosen, "confirmed": confirmed, "candidates": group["candidates"], "undated": group["undated"], "date_resolution_status": resolution, "as_of_status": as_of_status})
+            row = {"identity": identity, "semantic": semantic, "requested_date": target_string, "basis": index["basis"], "selected": chosen, "confirmed": confirmed, "candidates": group["candidates"], "undated": group["undated"], "date_resolution_status": resolution, "as_of_status": as_of_status}
+            if resolution == "llm":
+                judgment = chosen["occurrence"]["date_evidence"].get("llm_judgment") or {}
+                row["llm_judgment"] = {"label": "LLM 판단", "field": judgment.get("field"), "quote": judgment.get("quote"),
+                                       "model": judgment.get("model"), "judged_at": judgment.get("judged_at")}
+            checks = _cross_checks([chosen, *group["candidates"], *group["undated"]])
+            if checks:
+                row["llm_cross_checks"] = checks
+            results.append(row)
     return results
 
 

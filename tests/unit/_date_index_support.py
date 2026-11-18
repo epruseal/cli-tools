@@ -82,20 +82,22 @@ def _blob_sha(data: bytes) -> str:
 
 def spec(identity: str, revision: str, status: str = "confirmed", *, p: Optional[str] = None,
          e: Optional[str] = None, repeal: bool = False, body: str = "git", name: str = "fixture",
-         category: str = "법률", path: Optional[str] = None, semantics: Optional[list] = None) -> dict:
+         category: str = "법률", path: Optional[str] = None, semantics: Optional[list] = None,
+         evidence: Optional[dict] = None) -> dict:
     """One revision with one occurrence. ``p``/``e`` are promulgation and enforcement dates.
 
     ``semantics`` is written as the occurrence key ``undated_semantics`` when it is not None.
+    ``evidence`` replaces the occurrence ``date_evidence`` when it is not None.
     """
     return dict(identity=identity, revision=revision, status=status, p=p, e=e, repeal=repeal,
                 body=body, name=name, category=category, path=path or f"kr/{category}/{name}.md",
-                semantics=semantics)
+                semantics=semantics, evidence=evidence)
 
 
 def build_index(fake: FakeGitHub, dataset: str, basis: str, specs: list[dict]) -> dict:
     """Return the ``{"date_index": ...}`` wrapper. Ranks follow the contract (date order, unique)."""
     def event(s: dict) -> Optional[str]:
-        return s["e"] if s["status"] in ("confirmed", "estimated") else s["p"] if s["status"] == "unresolved" else None
+        return s["e"] if s["status"] in ("confirmed", "estimated", "llm") else s["p"] if s["status"] == "unresolved" else None
 
     ranked = {"p": {}, "e": {}}
     for key, dates in (("p", lambda s: s["p"]), ("e", event)):
@@ -113,17 +115,22 @@ def build_index(fake: FakeGitHub, dataset: str, basis: str, specs: list[dict]) -
                     "blob_sha": _blob_sha(text), "sha256": digest}
         occ = {"source_path": f"src/{s['revision']}.xml", "raw_promulgation_date": s["p"], "raw_enforcement_date": s["e"],
                "promulgation_date": s["p"], "enforcement_date": s["e"], "status": s["status"],
-               "exposure_date": s["p"] if s["status"] == "unresolved" else None, "date_evidence": {},
+               "exposure_date": s["p"] if s["status"] == "unresolved" else None,
+               "date_evidence": {"llm_judgment": {"field": "부칙", "quote": "이 조례는 공포일부터 시행한다.", "model": "m",
+                                                  "judged_at": "t"}} if s["status"] == "llm" else {},
                "observed_metadata": {}, "reason": "fixture", "promulgation_rank": ranked["p"].get(id(s)),
                "enforcement_rank": ranked["e"].get(id(s))}
         if s["semantics"] is not None:
             occ["undated_semantics"] = s["semantics"]
+        if s.get("evidence") is not None:
+            occ["date_evidence"] = s["evidence"]
         revisions.append({"identity": s["identity"], "revision": s["revision"], "copy_id": _sha256(s["revision"].encode()),
                           "name": s["name"], "category": s["category"], "canonical_path": s["path"],
                           "promulgation_date": s["p"], "enforcement_date": s["e"], "status": s["status"],
                           "repeal": s["repeal"], "reason": "fixture", "date_evidence": {}, "occurrences": [occ],
                           "body": body})
-    return {"date_index": {"schema_version": 1, "basis": basis, "dataset": dataset, "head_commit_sha": fake.head,
+    schema = 2 if any(s["status"] == "llm" or "llm_cross_check" in (s.get("evidence") or {}) for s in specs) else 1
+    return {"date_index": {"schema_version": schema, "basis": basis, "dataset": dataset, "head_commit_sha": fake.head,
                            "snapshots": [], "revisions": revisions}}
 
 
