@@ -14,6 +14,14 @@ from ..documents import (
     filter_and_paginate_documents,
 )
 from ..laws.frontmatter import parse as parse_frontmatter
+from ..services.date_index import (
+    LOOKUP_ERRORS,
+    emit_date_result,
+    find_date_result,
+    index_failure,
+    load_date_index,
+)
+from ..services.dates import parse_date_or_today
 from ..util.cli_common import (
     build_global_opts,
     emit_json,
@@ -93,6 +101,9 @@ def get_admrule_cmd(
     identifier: str = typer.Argument(..., metavar="<행정규칙명|path>"),
     type_: Optional[str] = typer.Option(None, "--type", help="Disambiguate by 행정규칙종류."),
     agency: Optional[str] = typer.Option(None, "--agency", help="Disambiguate by 기관경로 segment."),
+    the_date: Optional[str] = typer.Option(None, "--date"),
+    semantic: Optional[str] = typer.Option(None, "--semantic"),
+    date_index: Optional[Path] = typer.Option(None, "--date-index"),
     json_output: bool = typer.Option(False, "--json"),
     token: Optional[str] = typer.Option(None, "--token"),
     no_cache: bool = typer.Option(False, "--no-cache"),
@@ -101,7 +112,30 @@ def get_admrule_cmd(
 ) -> None:
     """Fetch one administrative rule by exact name or repository path."""
     opts = build_global_opts(token, no_cache, cache_dir, offline, json_output)
+    dated = the_date is not None or semantic is not None
+    if dated:
+        if semantic is None:
+            semantic = "공포일자"
+        # Reject before the client exists, so nothing is left open.
+        if semantic not in ("공포일자", "시행일자"):
+            raise typer.BadParameter("--semantic must be 공포일자 or 시행일자")
     client, cache = make_client(opts)
+
+    if dated:
+        try:
+            try:
+                target = parse_date_or_today(the_date)
+            except LegalizeError as exc:
+                raise handle_domain_error(exc) from exc
+            try:
+                index = load_date_index(client, ADMRULES_REPO, "admrules", date_index)
+                result = find_date_result(index, target, semantic, identifier, type_, (agency,))
+            except LOOKUP_ERRORS as exc:
+                raise handle_domain_error(index_failure(exc, "admrules")) from exc
+        finally:
+            client.close()
+        emit_date_result(result, json_output, "admrules.get")
+        return
 
     try:
         path, body = fetch_document_by_name_or_path(
