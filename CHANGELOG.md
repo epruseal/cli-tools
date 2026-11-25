@@ -9,6 +9,11 @@
 - Keep the MCP schema version 2.0 and the CLI schema version 1.0. When the query and the article headings use ASCII digits without leading zeros, existing keys keep their names, order, and values. The Changed section describes the results for other article numbers.
 - MCP output schemas for `laws_article` and `laws_diff` now list `article_id` in `required`, and they keep `additionalProperties: false`. A client that strictly validates new `laws_article` responses or new `laws_diff` responses with items in `changes` against the old 2.0 schema files rejects them. Update the schema files. The new schema files also reject such responses from 0.5.3 and earlier servers.
 - `laws_diff` responses grow by the new keys in each change. A diff near the size limit of MCP responses can now end with `RESPONSE_TOO_LARGE`.
+- Add date-index lookup to `laws as-of` and `laws get`. Pass `--date-index <path>` or set `LEGALIZE_LAWS_DATE_INDEX_PATH`. `laws get` uses the index only with `--date` or `--semantic`. Without an index, these commands keep their earlier output, exit codes, and warnings.
+- Add `--date`, `--semantic`, and `--date-index` to `admrules get` and `ordinances get`. These date lookups require a date index: pass `--date-index`, or set `LEGALIZE_ADMRULES_DATE_INDEX_PATH` for `admrules get` and `LEGALIZE_ORDINANCES_DATE_INDEX_PATH` for `ordinances get`.
+- When the index file is missing, a date lookup fails with `DATE_INDEX_REQUIRED`. When the index fails validation, it fails with `DATE_INDEX_INVALID`. It does not return partial results. The README section "날짜 색인 조회" describes the response keys and the checks.
+- Accept date index schema version 2 from an enforcement build with an LLM judgment ledger. The lookup selects a revision with status `llm` as a dated revision. The response adds `llm_judgment` for a selected `llm` revision and `llm_cross_checks` for an LLM cross-check disagreement.
+- Add `separate_application_timing` to a date lookup response when the selected dated revision has separate application timing sentences in its evidence.
 
 ### Changed
 

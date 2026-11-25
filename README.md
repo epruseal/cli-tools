@@ -69,6 +69,9 @@ Claude Cowork에 업로드하는 경로가 가장 단순합니다. 실제 도구
 - **호출 예산:** 색인을 쓰는 `laws as-of`도 기존과 같은 사전 점검(`--limit`, `--yes-exhaust-quota`, 토큰)을 거칩니다. 출력할 행의 Git 본문 수로 필요한 호출 수를 추정합니다.
 - **응답:** `selected`, `confirmed`, `candidates`, `undated`, `date_resolution_status`, `as_of_status`를 구분합니다. `--semantic`의 기본값은 `공포일자`이며 행정규칙에서는 발령일을 뜻합니다. 시행일이 미정인 판본도 공포일 조회에서 제외하지 않고, 미래 시행 판본은 `not_yet_effective`로 표시합니다. 날짜를 정할 수 없는 판본(`undated`)은 선택하지 않고 별도 목록에 두며, 이름이나 경로로 조회했을 때 날짜가 있는 결과가 없으면 그 `undated` 항목을 반환합니다. 색인 occurrence의 선택 키 `undated_semantics`가 기준을 가리키면(예: 공포일자가 깨졌으나 시행일자가 유효한 판본의 `["공포일자"]`) 그 기준의 조회에서만 같은 방식으로 `undated`에 두고, 다른 기준의 조회에서는 날짜 판본으로 선택합니다. 키가 없으면 빈 배열로 읽습니다. 값 형식이나 상태와 맞지 않으면 `DATE_INDEX_INVALID`로 실패합니다.
 - **별도 적용 시기 표지:** 선택된 판본이 날짜가 있는 상태(`confirmed`, `estimated`, `llm`)이고 그 근거의 `date_evidence.separate_application_timing`이 비어 있지 않으면 응답에 `separate_application_timing`(`label`과 `sentences`)을 더합니다. 이 문장들은 compiler가 부칙에서 주된 시행 문장을 뺀 줄 가운데 `시행한다`나 `적용한다`를 담은 줄로 모은 것입니다. 조문별 시행일 외에 경과조치, 적용례, 줄 단위로 잘린 조각이 들어갈 수 있습니다. compiler는 같은 조건의 판본 항목에 `separate_application_timing: true`를 쓰며, 이 키가 있으면 값은 `true`여야 하고 아니면 `DATE_INDEX_INVALID`로 실패합니다. 표지 키가 없는 이전 색인에서도 근거 문장으로 같은 `separate_application_timing` 행을 냅니다. 이때 `selected` 항목에는 판본 표지 필드가 없습니다.
+- **LLM 판단 색인:** 색인의 `schema_version`은 1과 2를 받습니다. occurrence status `llm`은 2인 색인에서만 받고, 1인 색인에 있으면 `DATE_INDEX_INVALID`로 실패합니다. compiler 가운데 `admrule-kr-compiler`와 `ordinance-kr-compiler`만 `--llm-ledger`를 받으며, 이 옵션을 준 시행일 모드 빌드의 색인에 2를 씁니다. `legalize-kr-compiler`에는 이 옵션이 없으므로 compiler가 만든 법령 색인은 1입니다.
+- **LLM 판단 표시:** 시행일자 조회는 `llm` 판본을 `confirmed`, `estimated`와 같이 시행일로 고릅니다. 선택된 판본의 status가 `llm`이면 결과 행에 `llm_judgment`(`label` "LLM 판단", `field`, `quote`, `model`, `judged_at`)를 더합니다. 그 행의 `as_of_status`는 `effective`나 `repealed`이고, 공포일자 조회에서는 `not_yet_effective`도 나옵니다. 이 키와 아래 `llm_cross_checks`는 색인을 쓴 `admrules get`, `ordinances get` 출력에 보입니다. `schema_version`이 2인 법령 색인이면 `laws get` 출력과 `laws as-of --json`의 `items`에도 보이고, `laws as-of`의 텍스트 표에는 나오지 않습니다.
+- **LLM 교차 확인 불일치:** 반환하는 판본(`selected`, `candidates`, `undated`)의 occurrence `date_evidence.llm_cross_check.result`가 `disagree`나 `copy-withheld`이면 결과 행에 `llm_cross_checks` 목록을 더합니다. 목록 항목은 판본 사본마다 하나이며 `label` "LLM 교차 확인 불일치", `identity`, `revision`, `copy_id`, `result`, `candidate_dates`, `parser_rule`, `llm_outcome`, `field`, `quote`, `model`, `judged_at`을 담습니다. compiler가 불일치로 날짜를 거둔 사본 가운데 공포일이 있는 사본은 status `unresolved`(`exposure_date`는 공포일)가 됩니다. 이 사본은 시행일자 조회에서 `exposure_date`가 기준일 이하일 때만 `candidates`에 들어가고, 그보다 늦으면 반환되지 않습니다. 공포일이 없는 사본은 status `undated`가 되어 `undated`에 들어갑니다. 공포일자 조회는 status와 관계없이 공포일로 고르므로 `selected` 판본도 이 목록의 항목이 될 수 있습니다.
 - **실패:** 색인을 지정했는데 파일이 없으면 `DATE_INDEX_REQUIRED`, 읽을 수 없거나 형식, 기준 HEAD, 본문 hash가 맞지 않으면 `DATE_INDEX_INVALID`로 실패하고 빈 목록이나 부분 결과로 대체하지 않습니다. 오류에는 색인 생성 방법 안내를 한 번 덧붙입니다. laws는 여기에 "`--date-index`를 빼고 `LEGALIZE_LAWS_DATE_INDEX_PATH`를 해제하면 기존 방식으로 조회한다"와 "기존 방식은 시행일 미정 판본이 빠질 수 있다"는 안내를 더합니다. 본문 도달 불가(`body commit is not reachable from HEAD`)처럼 원격 저장소 확인에서 나온 색인 오류에도 같은 안내를 붙입니다. 색인, 원천, 본문을 읽거나 검증하다 실패한 경우(참조한 파일이 없는 404, 기준 ref 조회·compare 실패, rate limit, 네트워크 오류)에도 같은 안내를 덧붙이고, 원래 문구와 종료 코드는 그대로 둡니다. 네트워크 오류는 종전처럼 종료 코드 1이며 `ConnectError: ...`처럼 오류 종류와 원문을 앞에 둡니다. 안내를 붙이지 않는 경우는 둘입니다. 모호한 식별자(`ambiguous identifier`)와 결과 없음(`no dated result`)은 색인과 원천이 정상일 때 나오는 조회 결과이며, 기존 방식으로 돌아가면 미해결 판본이 빠져 결과가 더 적을 수 있기 때문입니다. `laws as-of`의 호출 예산 거절(`would scan ...`, `would exceed rate-limit budget`)은 명령 자체의 보호 장치이고 고유 안내(`--limit`, `--yes-exhaust-quota`, 토큰)가 있으므로 문구를 그대로 둡니다. 옵션 없이 쓰는 기존 방식의 오류는 바뀌지 않습니다. `admrules`와 `ordinances`의 날짜 조회는 `--semantic`이 빈 값이거나 잘못되면 laws처럼 거부합니다(종료 코드 2).
 - **날짜 형식:** 색인의 날짜 필드는 `null`이거나 `YYYY-MM-DD` 한 개여야 합니다. 연도 0001~9999의 실재하는 날짜만 받고, `0000-01-01`, 압축형(`20200101`, `99991231`), 자리수가 모자란 형태, 공백, 여러 날짜를 담은 문자열은 `DATE_INDEX_INVALID`로 거부합니다. compiler가 색인에 쓰는 날짜 범위와 같습니다.
 - **알 수 없는 필드:** 색인의 `date_evidence`와 occurrence, revision, 색인 객체에 CLI가 모르는 키가 있어도 로드와 조회는 실패하지 않습니다. 반환되는 판본의 `date_evidence`에는 `user_decisions`, `lead_rulings` 같은 근거 배열이 유지됩니다.
@@ -407,6 +410,8 @@ GitHub CLI가 없다면 직접 발급합니다:
 `file_effective_date_only: true`는 이 한계를 명시합니다. 1970년 이전 공포본은 Git 날짜가 1970-01-01로 보정되어 있으므로,
 해당 날짜 조회에서는 frontmatter의 실제 공포일자 또는 시행일자를 사용합니다.
 
+CLI의 `laws as-of`와 `laws get`에서 `--date-index`를 주거나 색인 환경변수를 설정한 조회는 위 "날짜 색인 조회" 절을 따릅니다. `laws article`, `laws diff`와 MCP 도구는 날짜 색인을 쓰지 않습니다.
+
 ### `laws list` — 법령 목록 조회
 
 ```bash
@@ -420,13 +425,13 @@ JSON 응답: `{"schema_version": "1.0", "kind": "laws.list", "total": N, "items"
 특정 날짜에 선택되는 법령 파일을 나열합니다 (기본값: 오늘, KST).
 
 ```bash
-legalize laws as-of [--date YYYY-MM-DD] [--category 법률|...] [--include-repealed] [--semantic 공포일자|시행일자] [--json]
+legalize laws as-of [--date YYYY-MM-DD] [--category 법률|...] [--include-repealed] [--semantic 공포일자|시행일자] [--date-index PATH] [--json]
 ```
 
 ### `laws get` — 법령 전문 조회
 
 ```bash
-legalize laws get <법령명> [--category 법률|시행령|...] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--json]
+legalize laws get <법령명> [--category 법률|시행령|...] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--date-index PATH] [--json]
 ```
 
 JSON 응답: `{"schema_version": "1.0", "kind": "laws.get", "law", "semantic", "requested_date", "resolved_version_date", "resolved_commit_date", "resolved_commit_sha", "file_effective_date_only", "frontmatter", "body"}`
@@ -506,14 +511,14 @@ legalize precedents get <사건번호|path> [--json] [--legacy-map <path>]
 
 ```bash
 legalize admrules list [--type 고시|훈령|예규|공고|...] [--agency 기관명] [--page N] [--page-size N] [--json]
-legalize admrules get <행정규칙명|path> [--type X] [--agency 기관명] [--json]
+legalize admrules get <행정규칙명|path> [--type X] [--agency 기관명] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--date-index PATH] [--json]
 ```
 
 ### `ordinances list` / `ordinances get` — 자치법규 조회
 
 ```bash
 legalize ordinances list [--type 조례|규칙|훈령|예규|고시|...] [--jurisdiction 광역] [--subdivision 기초|_본청|_교육청] [--json]
-legalize ordinances get <자치법규명|path> [--type X] [--jurisdiction 광역] [--subdivision 기초] [--json]
+legalize ordinances get <자치법규명|path> [--type X] [--jurisdiction 광역] [--subdivision 기초] [--date YYYY-MM-DD] [--semantic 공포일자|시행일자] [--date-index PATH] [--json]
 ```
 
 ### `search` — 키워드 검색
